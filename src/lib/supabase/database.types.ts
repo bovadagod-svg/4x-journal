@@ -7,11 +7,238 @@ export type Json =
   | Json[]
 
 export type Database = {
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
+  __InternalSupabase: { PostgrestVersion: "14.5" }
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          balance: number
+          broker: string
+          color: string
+          created_at: string
+          currency: string
+          equity: number
+          id: string
+          is_default: boolean
+          label: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          broker?: string
+          color?: string
+          created_at?: string
+          currency?: string
+          equity?: number
+          id?: string
+          is_default?: boolean
+          label?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          broker?: string
+          color?: string
+          created_at?: string
+          currency?: string
+          equity?: number
+          id?: string
+          is_default?: boolean
+          label?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      journal_entries: {
+        Row: {
+          account_id: string | null
+          cold_review: string | null
+          created_at: string
+          during_trade: Json
+          id: string
+          kind: string
+          last_edited_at: string
+          lessons: string | null
+          mistakes: string[]
+          mood: string | null
+          playbook_id: string | null
+          post_trade: string | null
+          pre_trade: string | null
+          rule_break: boolean
+          rule_break_tags: string[]
+          screenshots: Json
+          tags: string[]
+          title: string | null
+          trade_id: string | null
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          cold_review?: string | null
+          created_at?: string
+          during_trade?: Json
+          id?: string
+          kind?: string
+          last_edited_at?: string
+          lessons?: string | null
+          mistakes?: string[]
+          mood?: string | null
+          playbook_id?: string | null
+          post_trade?: string | null
+          pre_trade?: string | null
+          rule_break?: boolean
+          rule_break_tags?: string[]
+          screenshots?: Json
+          tags?: string[]
+          title?: string | null
+          trade_id?: string | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          cold_review?: string | null
+          created_at?: string
+          during_trade?: Json
+          id?: string
+          kind?: string
+          last_edited_at?: string
+          lessons?: string | null
+          mistakes?: string[]
+          mood?: string | null
+          playbook_id?: string | null
+          post_trade?: string | null
+          pre_trade?: string | null
+          rule_break?: boolean
+          rule_break_tags?: string[]
+          screenshots?: Json
+          tags?: string[]
+          title?: string | null
+          trade_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          { foreignKeyName: "journal_entries_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] },
+          { foreignKeyName: "journal_entries_playbook_id_fkey"; columns: ["playbook_id"]; isOneToOne: false; referencedRelation: "playbooks"; referencedColumns: ["id"] },
+          { foreignKeyName: "journal_entries_trade_id_fkey"; columns: ["trade_id"]; isOneToOne: false; referencedRelation: "trades"; referencedColumns: ["id"] }
+        ]
+      }
+      playbooks: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          target_r: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          target_r?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          target_r?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          account_id: string
+          closed_at: string | null
+          created_at: string
+          entry_price: number
+          exit_price: number | null
+          id: string
+          mood: string | null
+          notes: string | null
+          opened_at: string
+          pair: string
+          playbook_id: string | null
+          pnl: number | null
+          r: number | null
+          risk_amount: number | null
+          side: string
+          size: number
+          status: string
+          stop_price: number | null
+          tags: string[]
+          target_price: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          closed_at?: string | null
+          created_at?: string
+          entry_price: number
+          exit_price?: number | null
+          id?: string
+          mood?: string | null
+          notes?: string | null
+          opened_at?: string
+          pair: string
+          playbook_id?: string | null
+          pnl?: number | null
+          r?: number | null
+          risk_amount?: number | null
+          side: string
+          size?: number
+          status?: string
+          stop_price?: number | null
+          tags?: string[]
+          target_price?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          closed_at?: string | null
+          created_at?: string
+          entry_price?: number
+          exit_price?: number | null
+          id?: string
+          mood?: string | null
+          notes?: string | null
+          opened_at?: string
+          pair?: string
+          playbook_id?: string | null
+          pnl?: number | null
+          r?: number | null
+          risk_amount?: number | null
+          side?: string
+          size?: number
+          status?: string
+          stop_price?: number | null
+          tags?: string[]
+          target_price?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          { foreignKeyName: "trades_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] },
+          { foreignKeyName: "trades_playbook_id_fkey"; columns: ["playbook_id"]; isOneToOne: false; referencedRelation: "playbooks"; referencedColumns: ["id"] }
+        ]
+      }
       user_settings: {
         Row: {
           accent: string

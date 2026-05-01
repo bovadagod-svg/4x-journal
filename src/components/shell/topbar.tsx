@@ -5,10 +5,12 @@ import { Icon } from "@/components/icons"
 import { useTweaks } from "@/lib/tweaks/tweaks-context"
 import { SECTION_META, type SectionId } from "@/lib/sections"
 import { AccountSwitcher } from "./account-switcher"
+import { useLogTrade } from "@/components/trades/log-trade-context"
 
 export function TopBar() {
   const pathname = usePathname()
   const { tweaks, setTweak } = useTweaks()
+  const logTrade = useLogTrade()
 
   const id = (pathname.split("/")[1] || "dashboard") as SectionId
   const meta = SECTION_META[id]
@@ -95,7 +97,7 @@ export function TopBar() {
             border: "1.5px solid var(--c-bg-elev-2)",
           }} />
         </button>
-        <button className="btn btn-primary" style={{ marginLeft: 4 }}>
+        <button className="btn btn-primary" style={{ marginLeft: 4 }} onClick={logTrade.open}>
           <Icon name="plus" size={14} />
           <span>Log Trade</span>
         </button>
