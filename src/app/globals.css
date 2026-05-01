@@ -1,0 +1,234 @@
+@import "tailwindcss";
+
+/* =========================================================================
+   4x Journal — design tokens
+   Ported from prototype `/4x Journal/styles.css`. Same hex values; keep parity.
+   ========================================================================= */
+
+:root {
+  /* Surfaces */
+  --c-bg: #0F0F10;
+  --c-bg-elev-1: #15151A;
+  --c-bg-elev-2: #1C1C22;
+  --c-bg-elev-3: #24242C;
+  --c-border: #2A2A33;
+  --c-border-strong: #3A3A45;
+
+  /* Foreground */
+  --c-fg: #F1F0F2;
+  --c-fg-muted: #9A97A1;
+  --c-fg-dim: #64616B;
+
+  /* Brand */
+  --c-purple: #4312A0;
+  --c-purple-bright: #6932D4;
+  --c-purple-soft: rgba(67, 18, 160, 0.18);
+
+  --c-red: #BE333D;
+  --c-red-bright: #E04A55;
+  --c-red-soft: rgba(190, 51, 61, 0.15);
+
+  --c-green: #11C458;
+  --c-green-bright: #2DDB73;
+  --c-green-soft: rgba(17, 196, 88, 0.15);
+
+  --c-amber: #E5A23B;
+
+  /* Accent — wired to tweaks.accent via [data-accent="..."] below */
+  --c-accent: var(--c-purple);
+  --c-accent-bright: var(--c-purple-bright);
+  --c-accent-soft: var(--c-purple-soft);
+
+  /* Type */
+  --font-display: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-body: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "SF Mono", ui-monospace, monospace;
+
+  /* Layout */
+  --sidebar-w: 232px;
+  --topbar-h: 64px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Density (regular by default) */
+  --density-pad: 18px 20px;
+  --density-gap: 14px;
+  --density-content-gap: 18px;
+}
+
+[data-theme="light"] {
+  --c-bg: #F6F5F7;
+  --c-bg-elev-1: #FFFFFF;
+  --c-bg-elev-2: #FFFFFF;
+  --c-bg-elev-3: #F1F0F2;
+  --c-border: #E4E2E7;
+  --c-border-strong: #CFCDD3;
+  --c-fg: #0F0F10;
+  --c-fg-muted: #64616B;
+  --c-fg-dim: #9A97A1;
+  --c-purple-soft: rgba(67, 18, 160, 0.08);
+  --c-red-soft: rgba(190, 51, 61, 0.08);
+  --c-green-soft: rgba(17, 196, 88, 0.08);
+}
+
+[data-accent="green"] {
+  --c-accent: var(--c-green);
+  --c-accent-bright: var(--c-green-bright);
+  --c-accent-soft: var(--c-green-soft);
+}
+[data-accent="red"] {
+  --c-accent: var(--c-red);
+  --c-accent-bright: var(--c-red-bright);
+  --c-accent-soft: var(--c-red-soft);
+}
+
+[data-density="compact"] {
+  --density-pad: 12px 14px;
+  --density-gap: 10px;
+  --density-content-gap: 12px;
+}
+[data-density="spacious"] {
+  --density-pad: 24px 26px;
+  --density-gap: 18px;
+  --density-content-gap: 24px;
+}
+
+/* Map design tokens into Tailwind v4 theme so utilities like `bg-bg-elev-1`,
+   `text-fg-muted`, `border-border-strong`, `text-accent` work in JSX. */
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-bg-elev-1: var(--c-bg-elev-1);
+  --color-bg-elev-2: var(--c-bg-elev-2);
+  --color-bg-elev-3: var(--c-bg-elev-3);
+  --color-border-base: var(--c-border);
+  --color-border-strong: var(--c-border-strong);
+  --color-fg: var(--c-fg);
+  --color-fg-muted: var(--c-fg-muted);
+  --color-fg-dim: var(--c-fg-dim);
+  --color-purple: var(--c-purple);
+  --color-purple-bright: var(--c-purple-bright);
+  --color-red: var(--c-red);
+  --color-red-bright: var(--c-red-bright);
+  --color-green: var(--c-green);
+  --color-green-bright: var(--c-green-bright);
+  --color-amber: var(--c-amber);
+  --color-accent: var(--c-accent);
+  --color-accent-bright: var(--c-accent-bright);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+}
+
+/* Base */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body { min-height: 100vh; letter-spacing: -0.005em; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+input, select, textarea { font: inherit; color: inherit; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-border-strong); }
+
+/* Reusable primitives — keep parity with prototype's plain-CSS classes */
+.mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+.card {
+  background: var(--c-bg-elev-1);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--density-pad);
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--c-fg);
+}
+.card-subtitle { font-size: 12px; color: var(--c-fg-muted); margin: 0; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 500;
+  background: var(--c-bg-elev-3);
+  color: var(--c-fg-muted);
+  border: 1px solid var(--c-border);
+}
+.chip-green  { color: var(--c-green-bright); background: var(--c-green-soft); border-color: transparent; }
+.chip-red    { color: var(--c-red-bright);   background: var(--c-red-soft);   border-color: transparent; }
+.chip-purple { color: #B79CFF;                background: var(--c-purple-soft); border-color: transparent; }
+.chip-amber  { color: var(--c-amber);         background: rgba(229, 162, 59, 0.12); border-color: transparent; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  background: var(--c-bg-elev-3);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  transition: all 0.15s;
+}
+.btn:hover { background: var(--c-border); }
+.btn-primary {
+  background: var(--c-accent);
+  border-color: var(--c-accent-bright);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--c-accent-bright); }
+
+.divider { height: 1px; background: var(--c-border); border: none; margin: 0; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.live-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--c-green);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--c-green);
+}
+
+/* App layout shell — same as prototype, but mobile-aware */
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 100vh;
+}
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--c-bg); }
+.content {
+  padding: 20px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--density-content-gap);
+}
+.row { display: flex; gap: var(--density-gap); }
+.col { display: flex; flex-direction: column; gap: var(--density-gap); }
+
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr; }
+  .content { padding: 14px 16px 32px; }
+}
