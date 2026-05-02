@@ -101,6 +101,27 @@ export function LogTradeModal({
       <form
         action={action}
         onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => {
+          // confirm_above_pct: warn before submit when risk_amount as % of equity
+          // exceeds the user's threshold. Pending orders skip this — no risk yet.
+          if (status === "pending") return
+          const threshold = defaults.confirm_above_pct
+          if (!threshold || threshold <= 0) return
+          const formEl = e.currentTarget
+          const riskInput = formEl.elements.namedItem("risk_amount") as HTMLInputElement | null
+          const acctSelect = formEl.elements.namedItem("account_id") as HTMLSelectElement | null
+          const risk = parseFloat(riskInput?.value ?? "")
+          const acct = accounts.find((a) => a.id === acctSelect?.value)
+          if (!risk || !acct) return
+          const equity = Number(acct.equity) || 0
+          if (equity <= 0) return
+          const pct = (risk / equity) * 100
+          if (pct < threshold) return
+          const ok = window.confirm(
+            `Risk ${formatUSD(risk)} is ${pct.toFixed(2)}% of equity (${formatUSD(equity)}) — above your ${threshold}% confirm threshold. Submit anyway?`,
+          )
+          if (!ok) e.preventDefault()
+        }}
         style={{
           width: "min(640px, 100%)",
           maxHeight: "90vh",
@@ -256,11 +277,14 @@ export function LogTradeModal({
                 ))}
               </select>
             </Field>
-            <Field label="Mood">
-              <select name="mood" defaultValue="" style={inputStyle}>
-                <option value="">—</option>
+            <Field label={defaults.require_journal_mood ? "Mood *" : "Mood"}>
+              <select name="mood" defaultValue="" required={defaults.require_journal_mood} style={inputStyle}>
+                <option value="">{defaults.require_journal_mood ? "— pick one —" : "—"}</option>
                 {MOODS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
+              {state && !state.ok && state.fieldErrors?.mood && (
+                <FieldError msg={state.fieldErrors.mood[0]} />
+              )}
             </Field>
           </div>
 
@@ -270,13 +294,17 @@ export function LogTradeModal({
           </Field>
 
           {/* Notes */}
-          <Field label="Notes (becomes a journal entry)">
+          <Field label={defaults.require_journal_note ? "Notes (becomes a journal entry) *" : "Notes (becomes a journal entry)"}>
             <textarea
               name="notes"
               rows={3}
-              placeholder="Why are you in? What's the thesis?"
+              required={defaults.require_journal_note}
+              placeholder={defaults.require_journal_note ? "Required by your settings — why are you in?" : "Why are you in? What's the thesis?"}
               style={{ ...inputStyle, resize: "vertical", minHeight: 64, fontFamily: "var(--font-body)" }}
             />
+            {state && !state.ok && state.fieldErrors?.notes && (
+              <FieldError msg={state.fieldErrors.notes[0]} />
+            )}
           </Field>
 
           {state && !state.ok && (

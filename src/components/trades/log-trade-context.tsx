@@ -14,6 +14,10 @@ export type TradeDefaults = {
   default_risk_pct: number
   default_fixed_lots: number
   default_playbook_id: string | null
+  require_journal_note: boolean
+  require_journal_mood: boolean
+  /** Risk-as-%-of-equity threshold above which a confirm dialog fires. */
+  confirm_above_pct: number
 }
 
 const LogTradeContext = createContext<Ctx | null>(null)

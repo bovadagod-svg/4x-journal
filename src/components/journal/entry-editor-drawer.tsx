@@ -32,9 +32,15 @@ const SAVE_DEBOUNCE_MS = 800
 export function EntryEditorDrawer({
   entryId,
   onClose,
+  requireJournalNote = false,
+  requireJournalScreenshot = false,
+  requireJournalMood = false,
 }: {
   entryId: string | null
   onClose: () => void
+  requireJournalNote?: boolean
+  requireJournalScreenshot?: boolean
+  requireJournalMood?: boolean
 }) {
   const [entry, setEntry] = useState<EntryRow | null>(null)
   const [tab, setTab] = useState<TabId>("pre")
@@ -91,13 +97,6 @@ export function EntryEditorDrawer({
     })()
   }, [entryId])
 
-  // ESC to close
-  useEffect(() => {
-    if (!entryId) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [entryId, onClose])
 
   // Autosave debounced — fires when any of the autosaved fields change.
   const dirtyKey = useMemo(() => JSON.stringify({
@@ -162,17 +161,42 @@ export function EntryEditorDrawer({
     else alert(r.error)
   }, [entry, onClose])
 
+  const handleClose = useCallback(() => {
+    if (entry?.kind === "trade") {
+      const missing: string[] = []
+      if (requireJournalNote && preTrade.trim().length === 0) missing.push("pre-trade notes")
+      if (requireJournalScreenshot && shots.length === 0) missing.push("a chart screenshot")
+      if (requireJournalMood && !mood) missing.push("a mood tag")
+      if (missing.length > 0) {
+        const list = missing.length === 1
+          ? missing[0]
+          : missing.length === 2
+            ? `${missing[0]} and ${missing[1]}`
+            : `${missing.slice(0, -1).join(", ")}, and ${missing[missing.length - 1]}`
+        if (!confirm(`Your settings require ${list}. Close anyway?`)) return
+      }
+    }
+    onClose()
+  }, [requireJournalNote, requireJournalScreenshot, requireJournalMood, entry, preTrade, shots.length, mood, onClose])
+
+  useEffect(() => {
+    if (!entryId) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [entryId, handleClose])
+
   if (!entryId) return null
   if (!entry) {
     return (
-      <DrawerShell onClose={onClose}>
+      <DrawerShell onClose={handleClose}>
         <div style={{ padding: 24, color: "var(--c-fg-muted)" }}>Loading…</div>
       </DrawerShell>
     )
   }
 
   return (
-    <DrawerShell onClose={onClose}>
+    <DrawerShell onClose={handleClose}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px", borderBottom: "1px solid var(--c-border)" }}>
         <div style={{
@@ -203,7 +227,7 @@ export function EntryEditorDrawer({
             {" · "}<SaveStatusPill status={saveStatus} />
           </div>
         </div>
-        <button onClick={onClose} aria-label="Close" style={iconBtn}>
+        <button onClick={handleClose} aria-label="Close" style={iconBtn}>
           <Icon name="x" size={16} />
         </button>
       </div>
@@ -401,7 +425,7 @@ export function EntryEditorDrawer({
         <button onClick={onDelete} className="btn" style={{ color: "var(--c-red-bright)", borderColor: "rgba(224,74,85,0.35)" }}>
           <Icon name="x" size={12} /> <span>Delete entry</span>
         </button>
-        <button onClick={onClose} className="btn">Done</button>
+        <button onClick={handleClose} className="btn">Done</button>
       </div>
     </DrawerShell>
   )

@@ -25,7 +25,7 @@ export default async function DashboardLayout({
   const [{ data: row }, accounts, playbooks] = await Promise.all([
     supabase
       .from("user_settings")
-      .select("theme, accent, density, empty_state, account_scope, sizing_method, default_risk_pct, default_fixed_lots, default_playbook_id")
+      .select("theme, accent, density, empty_state, account_scope, sizing_method, default_risk_pct, default_fixed_lots, default_playbook_id, require_journal_note, require_journal_screenshot, require_journal_mood, confirm_above_pct")
       .eq("user_id", user.id)
       .maybeSingle(),
     getUserAccounts(),
@@ -42,18 +42,29 @@ export default async function DashboardLayout({
       }
     : TWEAK_DEFAULTS
 
+  const requireJournalNote = row?.require_journal_note ?? false
+  const requireJournalScreenshot = row?.require_journal_screenshot ?? false
+  const requireJournalMood = row?.require_journal_mood ?? false
+
   const tradeDefaults: TradeDefaults = {
     sizing_method: (row?.sizing_method as TradeDefaults["sizing_method"]) ?? "fixed-risk",
     default_risk_pct: Number(row?.default_risk_pct ?? 0.5),
     default_fixed_lots: Number(row?.default_fixed_lots ?? 0.10),
     default_playbook_id: row?.default_playbook_id ?? null,
+    require_journal_note: requireJournalNote,
+    require_journal_mood: requireJournalMood,
+    confirm_above_pct: Number(row?.confirm_above_pct ?? 1.0),
   }
 
   return (
     <TweaksProvider initial={initial} userId={user.id}>
       <AccountsProvider accounts={accounts}>
         <LogTradeProvider playbooks={playbooks} defaults={tradeDefaults}>
-          <JournalDrawerProvider>
+          <JournalDrawerProvider
+            requireJournalNote={requireJournalNote}
+            requireJournalScreenshot={requireJournalScreenshot}
+            requireJournalMood={requireJournalMood}
+          >
             <TradeDetailDrawerProvider>
               <div className="app">
                 <Sidebar userEmail={user.email ?? null} />

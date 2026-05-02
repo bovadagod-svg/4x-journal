@@ -98,6 +98,27 @@ export async function createTrade(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: "Not signed in." }
 
+  const { data: settings } = await supabase
+    .from("user_settings")
+    .select("require_journal_note, require_journal_mood")
+    .eq("user_id", user.id)
+    .maybeSingle()
+
+  const fieldErrors: Record<string, string[]> = {}
+  if (settings?.require_journal_note && (!v.notes || v.notes.trim().length === 0)) {
+    fieldErrors.notes = ["Notes are required."]
+  }
+  if (settings?.require_journal_mood && (!v.mood || v.mood.trim().length === 0)) {
+    fieldErrors.mood = ["Mood is required."]
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      error: "Some fields are required by your settings.",
+      fieldErrors,
+    }
+  }
+
   // Pre-flight risk only fires for actually-open positions (not pending/closed).
   if (status === "open") {
     const violations = await evaluateTrade({

@@ -16,7 +16,7 @@ Living list of post-rebuild items. Each item has enough context to pick up cold 
 
 These are the loose ends most likely to make the app feel like a demo. Settings UI promises behavior the app doesn't deliver yet.
 
-### 1. `[ ]` Enforce `require_journal_note`
+### 1. `[x]` Enforce `require_journal_note`
 
 **Why:** Toggle exists in Settings → Journal defaults. If user enables it, the Log Trade modal should require the Notes field, and the entry editor drawer should warn before save with empty pre-trade text.
 
@@ -30,7 +30,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~30 min
 
-**Notes:**
+**Notes:** 2026-05-02 — Threaded `require_journal_note` through `(dashboard)/layout.tsx` into both `LogTradeProvider` (via `TradeDefaults`) and `JournalDrawerProvider` (new prop). Modal: conditional `required` attr + asterisk in label + inline `FieldError` for `state.fieldErrors.notes`. Server: `createTrade` fetches the setting and rejects empty notes with `fieldErrors.notes` before risk pre-flight. Drawer: `handleClose` confirm-guard fires on ESC / X / Done / backdrop, scoped to `kind === "trade"` so ideas and session plans aren't affected. Autosave is unchanged. `pnpm tsc --noEmit` clean. Browser verification still needed (see plan file).
 
 ---
 
@@ -51,7 +51,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 3. `[ ]` Enforce `require_journal_screenshot` and `require_journal_mood`
+### 3. `[x]` Enforce `require_journal_screenshot` and `require_journal_mood`
 
 **Why:** Same pattern as #1, two more toggles in Settings → Journal defaults.
 
@@ -61,11 +61,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~20 min (after #1 lands the pattern)
 
-**Notes:**
+**Notes:** 2026-05-02 — `JournalDrawerProvider` now accepts `requireJournalScreenshot` and `requireJournalMood`. `EntryEditorDrawer.handleClose` aggregates all 3 missing-field cases into a single confirm message ("Your settings require pre-trade notes, a chart screenshot, and a mood tag. Close anyway?"). Trade-only — ideas/session-plans skip the guard. `(dashboard)/layout.tsx` reads both flags from `user_settings` and threads them through. Modal: mood field now shows asterisk + `required` when toggle on, with `FieldError` for `state.fieldErrors.mood`. Server: `createTrade` aggregates `notes` + `mood` field errors into a single `fieldErrors` payload before risk pre-flight. Screenshot enforcement is **drawer-side only** (Log Trade modal has no screenshot field; uploads happen in the entry editor).
 
 ---
 
-### 4. `[ ]` Wire `confirm_above_pct` confirm dialog
+### 4. `[x]` Wire `confirm_above_pct` confirm dialog
 
 **Why:** Setting exists in Settings → Trading defaults. If a trade's risk_amount exceeds `confirm_above_pct × equity`, show a confirm dialog before submit ("Risk $X is N% of equity. Confirm?").
 
@@ -76,7 +76,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~30 min
 
-**Notes:**
+**Notes:** 2026-05-02 — `confirm_above_pct` added to `TradeDefaults` and threaded from `(dashboard)/layout.tsx`. Modal `<form>` now has an `onSubmit` handler that reads `risk_amount` + selected account's `equity` from the form, computes the % of equity, and fires `window.confirm()` with `e.preventDefault()` on cancel. Pending orders skip the guard (no immediate risk). Setting at 0 disables the check entirely.
 
 ---
 

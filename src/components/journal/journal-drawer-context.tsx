@@ -14,7 +14,17 @@ type Ctx = {
 
 const JournalDrawerContext = createContext<Ctx | null>(null)
 
-export function JournalDrawerProvider({ children }: { children: React.ReactNode }) {
+export function JournalDrawerProvider({
+  children,
+  requireJournalNote,
+  requireJournalScreenshot,
+  requireJournalMood,
+}: {
+  children: React.ReactNode
+  requireJournalNote: boolean
+  requireJournalScreenshot: boolean
+  requireJournalMood: boolean
+}) {
   const router = useRouter()
   const [openEntryId, setOpenEntryId] = useState<string | null>(null)
   const [, startTransition] = useTransition()
@@ -36,7 +46,13 @@ export function JournalDrawerProvider({ children }: { children: React.ReactNode 
   return (
     <JournalDrawerContext.Provider value={{ open, openForTrade, close, isOpen: !!openEntryId }}>
       {children}
-      <EntryEditorDrawer entryId={openEntryId} onClose={close} />
+      <EntryEditorDrawer
+        entryId={openEntryId}
+        onClose={close}
+        requireJournalNote={requireJournalNote}
+        requireJournalScreenshot={requireJournalScreenshot}
+        requireJournalMood={requireJournalMood}
+      />
     </JournalDrawerContext.Provider>
   )
 }
