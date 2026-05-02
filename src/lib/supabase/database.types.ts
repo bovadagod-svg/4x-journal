@@ -368,6 +368,7 @@ export type Database = {
           theme: string
           updated_at: string
           user_id: string
+          webhook_secret: string | null
         }
         Insert: {
           accent?: string
@@ -378,6 +379,7 @@ export type Database = {
           theme?: string
           updated_at?: string
           user_id: string
+          webhook_secret?: string | null
         }
         Update: {
           accent?: string
@@ -388,6 +390,7 @@ export type Database = {
           theme?: string
           updated_at?: string
           user_id?: string
+          webhook_secret?: string | null
         }
         Relationships: []
       }

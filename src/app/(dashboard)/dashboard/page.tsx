@@ -23,12 +23,12 @@ export default async function DashboardPage() {
 
       <PnLStrip today={today} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 14 }}>
+      <div className="grid-2-1">
         <OpenPositions trades={openTrades} />
         <RiskGauge />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 14 }}>
+      <div className="grid-2-1">
         <JournalFeed entries={recentEntries} trades={recentTrades} />
         <WatchlistWidget />
       </div>

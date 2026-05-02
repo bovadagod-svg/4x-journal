@@ -12,7 +12,7 @@ export function PnLStrip({
   const winRate = today.trades > 0 ? Math.round((today.wins / today.trades) * 100) : null
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+    <div className="stat-strip">
       <Stat
         label="Today's P&L"
         value={formatUSD(today.value, { signed: true })}

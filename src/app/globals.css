@@ -232,3 +232,26 @@ input, select, textarea { font: inherit; color: inherit; }
   .app { grid-template-columns: 1fr; }
   .content { padding: 14px 16px 32px; }
 }
+
+/* 2:1 grid that stacks on mobile. Use instead of inline 2fr/1fr templates. */
+.grid-2-1 {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--density-gap);
+}
+@media (max-width: 900px) {
+  .grid-2-1 { grid-template-columns: 1fr; }
+}
+
+/* Stat strip — 4-up on desktop, 2-up on tablet, 1-up on phone. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--density-gap);
+}
+@media (max-width: 900px) {
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .stat-strip { grid-template-columns: 1fr; }
+}

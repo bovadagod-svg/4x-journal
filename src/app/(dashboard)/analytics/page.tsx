@@ -37,14 +37,14 @@ export default async function AnalyticsPage() {
       />
 
       {/* Top stat grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="stat-strip">
         <Stat label="Win rate" value={stats.winRate != null ? `${stats.winRate}%` : "—"} sublabel={`${stats.wins}W · ${stats.losses}L · ${stats.breakeven}BE`} />
         <Stat label="Total P&L" value={formatUSD(stats.totalPnL, { signed: true, max: 0 })} sublabel="all closed trades" tone={stats.totalPnL > 0 ? "green" : stats.totalPnL < 0 ? "red" : undefined} />
         <Stat label="Profit factor" value={stats.profitFactor != null ? stats.profitFactor.toString() : "—"} sublabel="wins ÷ |losses|" />
         <Stat label="Expectancy" value={stats.expectancy != null ? `${stats.expectancy > 0 ? "+" : ""}${stats.expectancy}R` : "—"} sublabel="per trade, weighted" tone={stats.expectancy != null && stats.expectancy > 0 ? "green" : stats.expectancy != null && stats.expectancy < 0 ? "red" : undefined} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="stat-strip">
         <Stat label="Avg R" value={stats.avgR != null ? `${stats.avgR > 0 ? "+" : ""}${stats.avgR}` : "—"} />
         <Stat label="Max drawdown" value={stats.maxDrawdown != null ? `${stats.maxDrawdown}%` : "—"} sublabel="peak-to-trough" tone={stats.maxDrawdown != null && stats.maxDrawdown > 10 ? "red" : undefined} />
         <Stat label="Sharpe (R-based)" value={stats.sharpe != null ? stats.sharpe.toString() : "—"} sublabel="mean R ÷ stdev" />
