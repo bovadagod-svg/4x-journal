@@ -5,6 +5,7 @@ import { Icon } from "@/components/icons"
 import { COMMON_PAIRS, computePnL, computeR, formatUSD } from "@/lib/finance"
 import { createTrade, type TradeFormState } from "@/lib/actions/trades"
 import type { Database } from "@/lib/supabase/database.types"
+import type { TradeDefaults } from "./log-trade-context"
 
 type Account = Database["public"]["Tables"]["accounts"]["Row"]
 type Playbook = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "name" | "color" | "target_r">
@@ -17,12 +18,14 @@ export function LogTradeModal({
   accounts,
   playbooks,
   defaultAccountId,
+  defaults,
 }: {
   open: boolean
   onClose: () => void
   accounts: Account[]
   playbooks: Playbook[]
   defaultAccountId: string | null
+  defaults: TradeDefaults
 }) {
   const [state, action, pending] = useActionState<TradeFormState, FormData>(createTrade, undefined)
 
@@ -35,14 +38,26 @@ export function LogTradeModal({
   const [target, setTarget] = useState("")
   const [exit, setExit] = useState("")
   const [size, setSize] = useState("")
+  const [accountId, setAccountId] = useState<string>(defaultAccountId ?? "")
 
-  // Reset form when closing/reopening
+  // Reset form when closing/reopening — pre-fill from user defaults
   useEffect(() => {
     if (!open) {
       setSide("long"); setStatus("open"); setPair("EUR/USD")
-      setEntry(""); setStop(""); setTarget(""); setExit(""); setSize("")
+      setEntry(""); setStop(""); setTarget(""); setExit("")
+      setSize(defaults.sizing_method === "fixed-lots" ? String(defaults.default_fixed_lots * 100000) : "")
+      setAccountId(defaultAccountId ?? "")
     }
-  }, [open])
+  }, [open, defaults.sizing_method, defaults.default_fixed_lots, defaultAccountId])
+
+  // Suggested risk dollars from user's default % × selected account's equity
+  const suggestedRiskUsd = useMemo(() => {
+    if (defaults.sizing_method !== "fixed-risk") return null
+    const acc = accounts.find((a) => a.id === accountId)
+    if (!acc) return null
+    const r = (Number(acc.equity) || 0) * (defaults.default_risk_pct / 100)
+    return r > 0 ? Math.round(r * 100) / 100 : null
+  }, [accounts, accountId, defaults.sizing_method, defaults.default_risk_pct])
 
   // Close on success
   useEffect(() => {
@@ -114,7 +129,7 @@ export function LogTradeModal({
           {/* Account + status */}
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
             <Field label="Account">
-              <select name="account_id" defaultValue={defaultAccountId ?? ""} required style={inputStyle}>
+              <select name="account_id" value={accountId} onChange={(e) => setAccountId(e.target.value)} required style={inputStyle}>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.broker} · {a.label}</option>
                 ))}
@@ -181,7 +196,14 @@ export function LogTradeModal({
               {state && !state.ok && state.fieldErrors?.size && <FieldError msg={state.fieldErrors.size[0]} />}
             </Field>
             <Field label="Risk ($)">
-              <input name="risk_amount" type="number" step="any" placeholder="200" style={priceInput} />
+              <input
+                key={`risk-${accountId}-${suggestedRiskUsd ?? ""}`}
+                name="risk_amount"
+                type="number" step="any"
+                defaultValue={suggestedRiskUsd != null ? suggestedRiskUsd.toFixed(2) : ""}
+                placeholder={suggestedRiskUsd != null ? `${defaults.default_risk_pct}% of equity` : "200"}
+                style={priceInput}
+              />
             </Field>
             {status === "closed" && (
               <Field label="Exit price">
@@ -217,7 +239,7 @@ export function LogTradeModal({
           {/* Playbook + mood */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <Field label="Playbook (optional)">
-              <select name="playbook_id" defaultValue="" style={inputStyle}>
+              <select name="playbook_id" defaultValue={defaults.default_playbook_id ?? ""} style={inputStyle}>
                 <option value="">—</option>
                 {playbooks.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>

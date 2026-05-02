@@ -12,11 +12,25 @@ function currentMonthLabel() { return new Date().toISOString().slice(0, 7) }
 
 export default async function ReportsPage() {
   const m = SECTION_META.reports
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: settings } = user
+    ? await supabase
+        .from("user_settings")
+        .select("tax_jurisdiction, tax_fx_election, tax_estimated_rate")
+        .eq("user_id", user.id)
+        .maybeSingle()
+    : { data: null }
+
   const [accounts, ytdStats] = await Promise.all([
     getUserAccounts(),
     getYtdStats(),
   ])
   const taxYear = new Date().getFullYear()
+  const election = settings?.tax_fx_election ?? "988"
+  const jurisdiction = settings?.tax_jurisdiction ?? "US"
+  const taxRate = Number(settings?.tax_estimated_rate ?? 0.32)
+  const afterTaxNet = ytdStats.netPnL > 0 ? ytdStats.netPnL * (1 - taxRate) : ytdStats.netPnL
 
   return (
     <>
@@ -147,23 +161,37 @@ export default async function ReportsPage() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14, gap: 12 }}>
           <div>
             <h3 className="card-title">{taxYear} Tax Summary</h3>
-            <p className="card-subtitle">Realized P&L · running totals as of {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+            <p className="card-subtitle">
+              Realized P&L · {jurisdiction === "US" ? `Section ${election} treatment` : `${jurisdiction} jurisdiction`} · as of {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </p>
           </div>
-          <a href={`/api/reports/trades?from=${taxYear}-01-01&to=${todayIso()}&account=all&status=closed`} className="btn btn-primary">
-            <Icon name="external" size={13} />
-            <span>Export tax CSV</span>
-          </a>
+          <div style={{ display: "flex", gap: 6 }}>
+            <a href="/settings?tab=tax" className="btn">
+              <Icon name="settings" size={13} />
+              <span>Tax settings</span>
+            </a>
+            <a href={`/api/reports/trades?from=${taxYear}-01-01&to=${todayIso()}&account=all&status=closed`} className="btn btn-primary">
+              <Icon name="external" size={13} />
+              <span>Export tax CSV</span>
+            </a>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
-          <TaxStat label="Short-term gains" value={ytdStats.totalWinPnL > 0 ? formatUSD(ytdStats.totalWinPnL) : "—"} color="var(--c-green-bright)" />
-          <TaxStat label="Short-term losses" value={ytdStats.totalLossPnL < 0 ? formatUSD(ytdStats.totalLossPnL) : "—"} color="var(--c-red-bright)" />
+          <TaxStat label={election === "1256" ? "Realized gains" : "Short-term gains"} value={ytdStats.totalWinPnL > 0 ? formatUSD(ytdStats.totalWinPnL) : "—"} color="var(--c-green-bright)" />
+          <TaxStat label={election === "1256" ? "Realized losses" : "Short-term losses"} value={ytdStats.totalLossPnL < 0 ? formatUSD(ytdStats.totalLossPnL) : "—"} color="var(--c-red-bright)" />
           <TaxStat label="Net realized" value={ytdStats.trades > 0 ? formatUSD(ytdStats.netPnL, { signed: true }) : "—"} color={ytdStats.netPnL >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
-          <TaxStat label="Closed positions" value={String(ytdStats.closedTrades)} color="var(--c-fg)" />
+          <TaxStat
+            label={`Est. after-tax (${Math.round(taxRate * 100)}%)`}
+            value={ytdStats.trades > 0 ? formatUSD(afterTaxNet, { signed: true }) : "—"}
+            color={afterTaxNet >= 0 ? "var(--c-fg)" : "var(--c-red-bright)"}
+          />
         </div>
         <div style={{ padding: 12, background: "rgba(105, 50, 212, 0.08)", border: "1px solid rgba(105, 50, 212, 0.2)", borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)", display: "flex", alignItems: "flex-start", gap: 10 }}>
           <Icon name="info" size={14} color="var(--c-purple-bright)" />
           <span>
-            Section 988 (forex ordinary income) treatment applied by default. If you&apos;ve elected Section 1256 60/40 treatment, your accountant will need the same CSV — wash-sale matching is your tax software&apos;s job.
+            {jurisdiction === "US" && election === "988" && "Section 988 (ordinary-income) treatment applied. Switch to Section 1256 60/40 in Settings → Tax if you've made the election."}
+            {jurisdiction === "US" && election === "1256" && "Section 1256 60/40 split applied (60% long-term, 40% short-term). Year-end mark-to-market — your accountant will need this CSV."}
+            {jurisdiction !== "US" && `Reports use your ${jurisdiction} jurisdiction. Wash-sale matching is your tax software's job.`}
           </span>
         </div>
       </div>

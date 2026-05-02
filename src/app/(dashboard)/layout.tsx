@@ -5,7 +5,7 @@ import { TopBar } from "@/components/shell/topbar"
 import { TweaksPanel } from "@/components/shell/tweaks-panel"
 import { TweaksProvider } from "@/lib/tweaks/tweaks-context"
 import { TWEAK_DEFAULTS, type Tweaks } from "@/lib/tweaks/types"
-import { LogTradeProvider } from "@/components/trades/log-trade-context"
+import { LogTradeProvider, type TradeDefaults } from "@/components/trades/log-trade-context"
 import { AccountsProvider } from "@/components/accounts/accounts-context"
 import { JournalDrawerProvider } from "@/components/journal/journal-drawer-context"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
@@ -24,7 +24,7 @@ export default async function DashboardLayout({
   const [{ data: row }, accounts, playbooks] = await Promise.all([
     supabase
       .from("user_settings")
-      .select("theme, accent, density, empty_state, account_scope")
+      .select("theme, accent, density, empty_state, account_scope, sizing_method, default_risk_pct, default_fixed_lots, default_playbook_id")
       .eq("user_id", user.id)
       .maybeSingle(),
     getUserAccounts(),
@@ -41,10 +41,17 @@ export default async function DashboardLayout({
       }
     : TWEAK_DEFAULTS
 
+  const tradeDefaults: TradeDefaults = {
+    sizing_method: (row?.sizing_method as TradeDefaults["sizing_method"]) ?? "fixed-risk",
+    default_risk_pct: Number(row?.default_risk_pct ?? 0.5),
+    default_fixed_lots: Number(row?.default_fixed_lots ?? 0.10),
+    default_playbook_id: row?.default_playbook_id ?? null,
+  }
+
   return (
     <TweaksProvider initial={initial} userId={user.id}>
       <AccountsProvider accounts={accounts}>
-        <LogTradeProvider playbooks={playbooks}>
+        <LogTradeProvider playbooks={playbooks} defaults={tradeDefaults}>
           <JournalDrawerProvider>
             <div className="app">
               <Sidebar userEmail={user.email ?? null} />

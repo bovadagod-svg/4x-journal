@@ -9,13 +9,22 @@ type Playbook = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "n
 
 type Ctx = { open: () => void; close: () => void; isOpen: boolean }
 
+export type TradeDefaults = {
+  sizing_method: "fixed-risk" | "fixed-lots" | "kelly" | "volatility-scaled"
+  default_risk_pct: number
+  default_fixed_lots: number
+  default_playbook_id: string | null
+}
+
 const LogTradeContext = createContext<Ctx | null>(null)
 
 export function LogTradeProvider({
   playbooks,
+  defaults,
   children,
 }: {
   playbooks: Playbook[]
+  defaults: TradeDefaults
   children: React.ReactNode
 }) {
   const { accounts } = useAccounts()
@@ -31,6 +40,7 @@ export function LogTradeProvider({
         accounts={accounts}
         playbooks={playbooks}
         defaultAccountId={defaultAccountId}
+        defaults={defaults}
       />
     </LogTradeContext.Provider>
   )

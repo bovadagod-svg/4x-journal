@@ -451,10 +451,47 @@ export type Database = {
         Row: {
           accent: string
           account_scope: string
+          atr_multiplier: number
+          atr_period: number
+          cap_by_prop_rule: boolean
+          confirm_above_pct: number
           created_at: string
+          default_fixed_lots: number
+          default_playbook_id: string | null
+          default_risk_pct: number
           density: string
+          display_currency: string
+          display_name: string | null
+          email_digest: string
           empty_state: boolean
+          handle: string | null
+          journal_timezone_mode: string
+          kelly_fraction: number
+          news_avoidance_enabled: boolean
+          news_avoidance_minutes_after: number
+          news_avoidance_minutes_before: number
+          notify_coach: boolean
+          notify_daily_dd: boolean
+          notify_news: boolean
+          notify_payout: boolean
+          notify_rules_violation: boolean
+          notify_weekly_report: boolean
+          pnl_display: string
+          require_journal_mood: boolean
+          require_journal_note: boolean
+          require_journal_screenshot: boolean
+          round_lots_to: number
+          sizing_method: string
+          tax_carry_losses: boolean
+          tax_estimated_rate: number
+          tax_fiscal_year_start: string
+          tax_fx_election: string
+          tax_jurisdiction: string
           theme: string
+          tilt_cooldown_hours: number
+          tilt_cutoff: number
+          tilt_enabled: boolean
+          timezone: string
           updated_at: string
           user_id: string
           webhook_secret: string | null
@@ -462,10 +499,47 @@ export type Database = {
         Insert: {
           accent?: string
           account_scope?: string
+          atr_multiplier?: number
+          atr_period?: number
+          cap_by_prop_rule?: boolean
+          confirm_above_pct?: number
           created_at?: string
+          default_fixed_lots?: number
+          default_playbook_id?: string | null
+          default_risk_pct?: number
           density?: string
+          display_currency?: string
+          display_name?: string | null
+          email_digest?: string
           empty_state?: boolean
+          handle?: string | null
+          journal_timezone_mode?: string
+          kelly_fraction?: number
+          news_avoidance_enabled?: boolean
+          news_avoidance_minutes_after?: number
+          news_avoidance_minutes_before?: number
+          notify_coach?: boolean
+          notify_daily_dd?: boolean
+          notify_news?: boolean
+          notify_payout?: boolean
+          notify_rules_violation?: boolean
+          notify_weekly_report?: boolean
+          pnl_display?: string
+          require_journal_mood?: boolean
+          require_journal_note?: boolean
+          require_journal_screenshot?: boolean
+          round_lots_to?: number
+          sizing_method?: string
+          tax_carry_losses?: boolean
+          tax_estimated_rate?: number
+          tax_fiscal_year_start?: string
+          tax_fx_election?: string
+          tax_jurisdiction?: string
           theme?: string
+          tilt_cooldown_hours?: number
+          tilt_cutoff?: number
+          tilt_enabled?: boolean
+          timezone?: string
           updated_at?: string
           user_id: string
           webhook_secret?: string | null
@@ -473,15 +547,54 @@ export type Database = {
         Update: {
           accent?: string
           account_scope?: string
+          atr_multiplier?: number
+          atr_period?: number
+          cap_by_prop_rule?: boolean
+          confirm_above_pct?: number
           created_at?: string
+          default_fixed_lots?: number
+          default_playbook_id?: string | null
+          default_risk_pct?: number
           density?: string
+          display_currency?: string
+          display_name?: string | null
+          email_digest?: string
           empty_state?: boolean
+          handle?: string | null
+          journal_timezone_mode?: string
+          kelly_fraction?: number
+          news_avoidance_enabled?: boolean
+          news_avoidance_minutes_after?: number
+          news_avoidance_minutes_before?: number
+          notify_coach?: boolean
+          notify_daily_dd?: boolean
+          notify_news?: boolean
+          notify_payout?: boolean
+          notify_rules_violation?: boolean
+          notify_weekly_report?: boolean
+          pnl_display?: string
+          require_journal_mood?: boolean
+          require_journal_note?: boolean
+          require_journal_screenshot?: boolean
+          round_lots_to?: number
+          sizing_method?: string
+          tax_carry_losses?: boolean
+          tax_estimated_rate?: number
+          tax_fiscal_year_start?: string
+          tax_fx_election?: string
+          tax_jurisdiction?: string
           theme?: string
+          tilt_cooldown_hours?: number
+          tilt_cutoff?: number
+          tilt_enabled?: boolean
+          timezone?: string
           updated_at?: string
           user_id?: string
           webhook_secret?: string | null
         }
-        Relationships: []
+        Relationships: [
+          { foreignKeyName: "user_settings_default_playbook_id_fkey"; columns: ["default_playbook_id"]; isOneToOne: false; referencedRelation: "playbooks"; referencedColumns: ["id"] }
+        ]
       }
     }
     Views: { [_ in never]: never }
