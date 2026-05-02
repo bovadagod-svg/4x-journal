@@ -198,6 +198,54 @@ export async function deleteAllJournalEntries(): Promise<{ ok: boolean; error?: 
   return { ok: true }
 }
 
+/**
+ * Wipe all workspace data — trades, fills, journal, playbooks, watchlist, accounts —
+ * but keep the auth user and their preferences (theme/accent/timezone/etc).
+ *
+ * Order matters: child rows that reference parents must go first to avoid FK errors.
+ * trade_fills, broker_connections, risk_rules cascade from trades/accounts so we
+ * delete them explicitly to be safe (cascade rules can drift).
+ */
+export async function resetWorkspace(): Promise<{ ok: boolean; error?: string; tables?: Record<string, number | undefined> }> {
+  const { user, supabase } = await getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const tables: Record<string, number | undefined> = {}
+  const targets = [
+    "trade_fills",       // refs trades
+    "journal_entries",   // refs trades + accounts + playbooks
+    "trades",            // refs accounts + playbooks
+    "broker_connections",// refs accounts
+    "risk_rules",        // refs accounts
+    "watchlist_pairs",
+    "playbooks",
+    "accounts",
+  ] as const
+
+  for (const t of targets) {
+    const { error, count } = await supabase
+      .from(t)
+      .delete({ count: "exact" })
+      .eq("user_id", user.id)
+    if (error) return { ok: false, error: `${t}: ${error.message}`, tables }
+    tables[t] = count ?? 0
+  }
+
+  // Reset workspace-level user_settings fields that reference deleted data,
+  // but keep theme/accent/density/timezone/etc.
+  await supabase
+    .from("user_settings")
+    .update({
+      account_scope: "all",
+      default_playbook_id: null,
+      empty_state: false,
+    })
+    .eq("user_id", user.id)
+
+  revalidatePath("/", "layout")
+  return { ok: true, tables }
+}
+
 export async function deleteAccount() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
