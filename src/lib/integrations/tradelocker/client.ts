@@ -247,9 +247,10 @@ export async function tlSyncTrades(args: {
     attempts.push({ kind: "config", path: "/trade/config", ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
   }
 
-  // 2) Instruments — map tradableInstrumentId → symbol so we can show
-  //    "EUR/USD" instead of an opaque numeric id.
-  const instrumentMap = new Map<string, string>()
+  // 2) Instruments list — map tradableInstrumentId → { name, primaryRouteId }.
+  //    Contract size lives behind a separate per-instrument detail call.
+  type InstInfo = { name: string; routeId: string | null; contractSize: number }
+  const instrumentMap = new Map<string, InstInfo>()
   try {
     const r = await tlFetch(base, `/trade/accounts/${args.accountId}/instruments`, { headers: baseHeaders })
     attempts.push({ kind: "instruments", path: `/trade/accounts/${args.accountId}/instruments`, ok: true, status: r.status, sample: trim(r.body) })
@@ -258,13 +259,26 @@ export async function tlSyncTrades(args: {
         const o = inst as Record<string, unknown>
         const id = String(o.tradableInstrumentId ?? o.id ?? "")
         const sym = String(o.tradableInstrumentName ?? o.name ?? o.symbol ?? "")
-        if (id && sym) instrumentMap.set(id, sym)
+        let routeId: string | null = null
+        if (Array.isArray(o.routes)) {
+          const trade = (o.routes as unknown[]).find((rt) => typeof rt === "object" && rt != null && (rt as Record<string, unknown>).type === "TRADE")
+          if (trade && typeof trade === "object") routeId = String((trade as Record<string, unknown>).id ?? "")
+        }
+        if (id && sym) instrumentMap.set(id, { name: sym, routeId, contractSize: 1 })
       }
     }
   } catch (e) {
     const err = e instanceof TLError ? e : null
     attempts.push({ kind: "instruments", path: `/trade/accounts/${args.accountId}/instruments`, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
   }
+
+  // 2b) Per-instrument detail — fetch contract size for each instrument we
+  //     actually traded. This is the fix for "P&L is 100x off on metals":
+  //     for XAUUSD on TradeLocker, 1 lot = 100 oz, so we have to multiply
+  //     reported qty by contractSize before computing P&L.
+  //
+  //     We delay this until after we've looked at orders/positions to know
+  //     which instruments need details. Done below in tlFetchContractSizes.
 
   // 3) Open positions.
   let openObjects: Array<Record<string, unknown>> = []
@@ -300,9 +314,35 @@ export async function tlSyncTrades(args: {
     attempts.push({ kind: "state", path: `/trade/accounts/${args.accountId}/state`, ok: false, status: err?.status, error: err?.message ?? String(e) })
   }
 
-  // ordersHistory rows are individual orders (entry, SL, TP, cancellations).
-  // Group by positionId and pair the opener (isOpen=true) with the closer
-  // (isOpen=false) to reconstruct one trade per closed position.
+  // 6) Hydrate contract sizes for every (instrumentId, routeId) we actually
+  //    saw in positions or orders. TradeLocker reports qty in *lots*, not
+  //    units, so PnL = (entry - exit) × qty × contractSize.
+  const seenInstruments = new Set<string>()
+  for (const o of [...openObjects, ...closedObjects]) {
+    const id = o.tradableInstrumentId != null ? String(o.tradableInstrumentId) : ""
+    if (id) seenInstruments.add(id)
+  }
+  for (const instrumentId of seenInstruments) {
+    const info = instrumentMap.get(instrumentId)
+    const routeId = info?.routeId ?? "1742612" // TradeLocker's most common trade route
+    const path = `/trade/instruments/${instrumentId}?routeId=${routeId}`
+    try {
+      const r = await tlFetch(base, path, { headers: baseHeaders })
+      attempts.push({ kind: "instruments", path, ok: true, status: r.status, sample: trim(r.body) })
+      const cs = extractContractSize(r.body)
+      if (cs != null && cs > 0 && info) info.contractSize = cs
+    } catch (e) {
+      const err = e instanceof TLError ? e : null
+      attempts.push({ kind: "instruments", path, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
+    }
+  }
+
+  // Fallback contract sizes for known TL/FunderPro symbols when the detail
+  // endpoint doesn't expose one or the field name varies.
+  for (const info of instrumentMap.values()) {
+    if (info.contractSize === 1) info.contractSize = fallbackContractSize(info.name)
+  }
+
   const closed = reconstructClosedTrades(closedObjects, instrumentMap)
 
   return {
@@ -314,6 +354,51 @@ export async function tlSyncTrades(args: {
 }
 
 /**
+ * Pull contract size out of a /trade/instruments/{id} response. TL exposes
+ * this under a few different field names depending on instrument type, so
+ * we check the common ones in priority order.
+ */
+function extractContractSize(body: unknown): number | null {
+  if (!body || typeof body !== "object") return null
+  const root = "d" in body ? (body as { d: unknown }).d : body
+  if (!root || typeof root !== "object") return null
+  const r = root as Record<string, unknown>
+  // Some shapes nest the data under `instrument` or use the value directly.
+  const inst = (typeof r.instrument === "object" && r.instrument) ? (r.instrument as Record<string, unknown>) : r
+  const candidates = [
+    inst.contractSize,
+    inst.lotSize,
+    inst.contractValue,
+    inst.contractMultiplier,
+    inst.multiplier,
+    inst.quantityMultiplier,
+  ]
+  for (const v of candidates) {
+    const n = num(v)
+    if (n != null && n > 0) return n
+  }
+  return null
+}
+
+/**
+ * Last-resort contract sizes for common TradeLocker / FunderPro instruments.
+ * Only applies when the instruments detail endpoint didn't expose a value.
+ */
+function fallbackContractSize(symbol: string): number {
+  const s = symbol.toUpperCase()
+  if (s === "XAUUSD" || s === "GOLD") return 100      // ounces per lot
+  if (s === "XAGUSD" || s === "SILVER") return 5000   // ounces per lot
+  if (s === "XTIUSD" || s === "USOIL" || s === "WTI") return 1000 // barrels per lot
+  if (s === "XBRUSD" || s === "UKOIL" || s === "BRENT") return 1000
+  // Indices CFDs are usually $1/$10 per index point per lot. Use 1 as a
+  // safer default — the user can correct with manual entry if needed.
+  if (/^(US30|NAS100|SPX500|UK100|GER40|DAX|JPN225|FRA40|ESP35|EUSTX50|FTSE100|NDX100)$/.test(s)) return 1
+  // Forex pairs: 100,000 base currency per standard lot.
+  if (/^[A-Z]{3}\/?[A-Z]{3}$/.test(s)) return 100000
+  return 1
+}
+
+/**
  * TradeLocker stores orders, not trades. A single round-trip trade is a
  * pair of Filled orders sharing a positionId — one with isOpen=true (the
  * entry) and one with isOpen=false (the exit, typically the SL or TP that
@@ -321,7 +406,7 @@ export async function tlSyncTrades(args: {
  */
 function reconstructClosedTrades(
   orderRows: Array<Record<string, unknown>>,
-  instrumentMap: Map<string, string>,
+  instrumentMap: Map<string, { name: string; contractSize: number }>,
 ): TLPosition[] {
   const byPosition = new Map<string, Array<Record<string, unknown>>>()
   for (const o of orderRows) {
@@ -344,21 +429,24 @@ function reconstructClosedTrades(
     // Side comes from the opening order ("buy" → long, "sell" → short).
     const side = inferSide(opener)
     const instId = opener.tradableInstrumentId != null ? String(opener.tradableInstrumentId) : ""
-    const symbol = (instId && instrumentMap.get(instId)) ?? ""
+    const info = instId ? instrumentMap.get(instId) : undefined
+    const symbol = info?.name ?? ""
+    const contractSize = info?.contractSize ?? 1
     const entry = num(opener.avgPrice ?? opener.price) ?? 0
     const exit = num(closer.avgPrice ?? closer.price)
-    const size = num(opener.filledQty ?? opener.qty) ?? 0
+    const lots = num(opener.filledQty ?? opener.qty) ?? 0
+    const units = lots * contractSize
 
     out.push({
       externalId: positionId,
       pair: prettyPair(symbol),
       side,
-      size,
+      size: units,
       entryPrice: entry,
       stopPrice: num(opener.stopLoss),
       targetPrice: num(opener.takeProfit),
       exitPrice: exit,
-      pnl: null,                // computed in the action via finance.ts
+      pnl: null,                // computed in the action via finance.ts (units × price diff)
       status: "closed",
       openedAt: tlTimestamp(opener.lastModified ?? opener.createdDate) ?? new Date().toISOString(),
       closedAt: tlTimestamp(closer.lastModified ?? closer.createdDate),
@@ -459,7 +547,11 @@ function decodeRows(body: unknown, columns: string[], envelopeKeys: string[]): A
   return []
 }
 
-function objectToPosition(r: Record<string, unknown>, status: "open" | "closed", instrumentMap: Map<string, string>): TLPosition {
+function objectToPosition(
+  r: Record<string, unknown>,
+  status: "open" | "closed",
+  instrumentMap: Map<string, { name: string; contractSize: number }>,
+): TLPosition {
   const side = inferSide(r)
   // TL position rows: avgPrice = open price for positions.
   // TL ordersHistory rows: avgPrice = filled execution price.
@@ -469,19 +561,26 @@ function objectToPosition(r: Record<string, unknown>, status: "open" | "closed",
 
   // Resolve pair from instrument map first, fall back to direct symbol fields.
   const instId = r.tradableInstrumentId != null ? String(r.tradableInstrumentId) : ""
+  const info = instId ? instrumentMap.get(instId) : undefined
   const symbol =
-    (instId && instrumentMap.get(instId))
+    info?.name
     ?? (typeof r.symbol === "string" ? r.symbol : "")
     ?? (typeof r.tradableInstrumentName === "string" ? r.tradableInstrumentName : "")
     ?? (typeof r.instrumentName === "string" ? r.instrumentName : "")
     ?? (typeof r.pair === "string" ? r.pair : "")
     ?? ""
+  const contractSize = info?.contractSize ?? 1
+
+  // qty from TL is in *lots* — multiply by contract size to get unit count
+  // so finance.computePnL produces the right $ value.
+  const lots = num(r.qty ?? r.filledQty ?? r.quantity ?? r.size ?? r.volume ?? r.lots) ?? 0
+  const units = lots * contractSize
 
   return {
     externalId: idCandidate != null ? String(idCandidate) : "",
     pair: prettyPair(symbol),
     side,
-    size: num(r.qty ?? r.filledQty ?? r.quantity ?? r.size ?? r.volume ?? r.lots) ?? 0,
+    size: units,
     entryPrice: entry ?? 0,
     stopPrice: num(r.stopLoss ?? r.sl ?? r.stopPrice),
     targetPrice: num(r.takeProfit ?? r.tp ?? r.targetPrice),
