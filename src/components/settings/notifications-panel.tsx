@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { updateNotifications, type SettingsFormState } from "@/lib/actions/settings"
 import { SettingsSection, SettingsRow, Toggle, SaveBar, useDirty, inputStyle } from "./settings-primitives"
+import { PushSection } from "./push-section"
 
 export type NotificationsState = {
   notify_daily_dd: boolean
@@ -75,10 +76,12 @@ export function NotificationsPanel({ initial }: { initial: NotificationsState })
         </SettingsRow>
       </SettingsSection>
 
+      <PushSection />
+
       <div className="card" style={{ padding: 14, background: "rgba(105, 50, 212, 0.06)", border: "1px solid rgba(105, 50, 212, 0.2)", display: "flex", gap: 12, alignItems: "flex-start", fontSize: 12, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
         <span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--c-purple-bright)", marginTop: 5, flexShrink: 0 }} />
         <span>
-          Push notifications and email delivery roll out in Phase 10. Your preferences here will activate the moment the channels go live.
+          Email delivery requires <code style={{ fontFamily: "var(--font-mono)" }}>RESEND_API_KEY</code> + <code style={{ fontFamily: "var(--font-mono)" }}>EMAIL_FROM</code> env vars. Push needs VAPID keys (see card above). Without them, your toggles persist but no messages send.
         </span>
       </div>
     </form>

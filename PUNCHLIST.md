@@ -296,7 +296,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 18. `[ ]` Coach AI nudges
+### 18. `[~]` Coach AI nudges
 
 **Why:** Phase 10 placeholder. Server action takes last 30 days of trades + journal entries → asks Claude *"What patterns do you see? Where am I leaking edge?"* → renders in the existing `CoachNudge` widget slot on Dashboard.
 
@@ -313,7 +313,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 19. `[ ]` Email delivery (Resend) + weekly digest
+### 19. `[~]` Email delivery (Resend) + weekly digest
 
 **Why:** All `notify_*` toggles wait for delivery. Email is the lowest-friction first channel.
 
@@ -330,7 +330,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 20. `[ ]` Web push notifications
+### 20. `[~]` Web push notifications
 
 **Why:** Real-time daily DD alerts, news warnings. Works on installed PWA.
 

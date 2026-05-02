@@ -259,6 +259,39 @@ export type Database = {
           { foreignKeyName: "journal_entries_trade_id_fkey"; columns: ["trade_id"]; isOneToOne: false; referencedRelation: "trades"; referencedColumns: ["id"] }
         ]
       }
+      push_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          user_agent: string | null
+          created_at: string
+          last_used_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          user_agent?: string | null
+          created_at?: string
+          last_used_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          endpoint?: string
+          p256dh?: string
+          auth?: string
+          user_agent?: string | null
+          created_at?: string
+          last_used_at?: string
+        }
+        Relationships: []
+      }
       playbooks: {
         Row: {
           color: string
@@ -516,6 +549,7 @@ export type Database = {
           atr_multiplier: number
           atr_period: number
           cap_by_prop_rule: boolean
+          coach_cache: Json | null
           confirm_above_pct: number
           created_at: string
           default_fixed_lots: number
@@ -566,6 +600,7 @@ export type Database = {
           atr_multiplier?: number
           atr_period?: number
           cap_by_prop_rule?: boolean
+          coach_cache?: Json | null
           confirm_above_pct?: number
           created_at?: string
           default_fixed_lots?: number
@@ -616,6 +651,7 @@ export type Database = {
           atr_multiplier?: number
           atr_period?: number
           cap_by_prop_rule?: boolean
+          coach_cache?: Json | null
           confirm_above_pct?: number
           created_at?: string
           default_fixed_lots?: number
