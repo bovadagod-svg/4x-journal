@@ -102,7 +102,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ## 🟡 Foundation gaps
 
-### 8. `[ ]` Verify Vercel env has `SUPABASE_SERVICE_ROLE_KEY`
+### 8. `[~]` Verify Vercel env has `SUPABASE_SERVICE_ROLE_KEY`
 
 **Why:** TradingView webhook returns 500 without it. If this isn't set, no webhook trade has ever inserted in prod.
 
@@ -112,11 +112,26 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** 5 min
 
-**Notes:**
+**Notes:** 2026-05-02 — **Confirmed missing in both prod (Vercel) and local (.env.local)**. Service role keys can't be safely retrieved by automation, so this needs manual action by user:
+
+  1. **Get the key** — open Supabase project dashboard → Project Settings → API → "service_role" secret → click reveal + copy. Treat it like a database password — never commit to git.
+  2. **Add to Vercel** —
+     ```bash
+     cd app && npx vercel env add SUPABASE_SERVICE_ROLE_KEY production
+     # paste the key when prompted
+     ```
+     Then redeploy: `npx vercel --prod --yes` (or just push any commit).
+  3. **Add to local .env.local** (so dev mode also works):
+     ```
+     SUPABASE_SERVICE_ROLE_KEY=eyJh...your-secret-here
+     ```
+  4. **Verify** — go to `/settings?tab=integrations`, generate a webhook URL if you haven't, then `curl -X POST <url>` with a tiny JSON payload like `{"pair":"EUR/USD","side":"long","entry":1.08,"size":1000}`. Should return `200` with the trade ID; check `/ledger` for the new row.
+
+  Currently only `route.ts` consumes this env var (the TradingView webhook endpoint at `src/app/api/webhooks/tradingview/[userId]/route.ts`). All other server-side code uses the regular Supabase client which respects RLS via the user's JWT.
 
 ---
 
-### 9. `[ ]` CSV import for accounts
+### 9. `[x]` CSV import for accounts
 
 **Why:** Account card empty state advertises "Manual entry · CSV import · TradeLocker connection" but CSV doesn't exist. CSV is the universal broker bridge — works for MT4/5, cTrader, FunderPro, and any platform that exports trade history.
 
@@ -131,11 +146,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~half day
 
-**Notes:** Use `papaparse` (already on Vercel-friendly bundle size).
+**Notes:** 2026-05-02 — Installed papaparse + types. Architecture: 4-step modal (Pick → Map → Preview → Done), column auto-detection against a wide alias list (MT4/5/cTrader/FunderPro headers all auto-map). Required fields (pair, side, entry_price, size) must be mapped before Preview. Pure helpers in `lib/integrations/csv/parser.ts` — `parseCsvFile`, `normalizeRows`, `parseTimestamp` (handles ISO + MT-style "YYYY.MM.DD HH:mm:ss"). Server action `importCsvTrades` (in `lib/actions/csv-import.ts`) dedups via synthetic `csv:${external_id}` or `csv:${opened_at}|${pair}|${side}|${size}` so re-uploads of the same CSV are idempotent. Each imported trade also gets entry/exit fills via `trade_fills` so the Ledger renders identically to broker syncs and the recompute trigger maintains aggregates. New `CsvImportButton` rendered next to "Add account" in the Accounts page header. Preview step shows "will import / skipped invalid / total parsed" KPI plus first 8 valid rows + per-issue summary of invalid rows.
 
 ---
 
-### 10. `[ ]` Onboarding wizard for new users
+### 10. `[x]` Onboarding wizard for new users
 
 **Why:** New users land on Dashboard cold with zero accounts/playbooks/trades. A 3-step wizard ("Add your first account → name a playbook → log a trade") drastically improves first-session feel.
 
@@ -147,11 +162,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~half day
 
-**Notes:** Skip-able with a "Skip for now" button that sets `user_settings.onboarded_at` (would need a column add).
+**Notes:** 2026-05-02 — Modal approach (not separate route). Schema migration `user_settings_onboarded_at` adds nullable `onboarded_at` timestamptz; `(dashboard)/layout.tsx` selects it and gates the modal on `!onboarded_at && accounts.length === 0`. New `completeOnboarding` server action sets the timestamp on either "Skip for now" or "I'm done — close". Modal renders three step cards with checkmark progress (Step 1 lights green when `accounts.length > 0`). Step 1 opens the existing `AccountFormModal` (reused — manual or TradeLocker), Step 2 deep-links to `/playbooks`, Step 3 opens the existing Log Trade modal via `useLogTrade()`. Hero copy + 2-min tagline + skip-confirm dialog.
 
 ---
 
-### 11. `[ ]` Daily TradeLocker sync via Vercel Cron
+### 11. `[~]` Daily TradeLocker sync via Vercel Cron
 
 **Why:** Manual sync only today. Daily cron → "wake up and yesterday's trades are already there" is a real magic moment.
 
@@ -163,7 +178,22 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~1 hour
 
-**Notes:** Vercel Hobby tier allows daily-only cron. Use `CRON_SECRET` env var to gate the route from public hits.
+**Notes:** 2026-05-02 — Code shipped, **needs `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` env vars set in Vercel before it works**. Architecture:
+  - Refactored `syncTradeLockerConnection` into a `_syncTradeLockerCore(connectionId, supabase)` helper that takes any client. `user.id` derived from `conn.user_id` (not from the cookie) so admin contexts work.
+  - Two public wrappers: `syncTradeLockerConnection` (cookie-authed, RLS-gated) and `syncTradeLockerConnectionAdmin` (service-role, used by cron).
+  - `listTradeLockerConnections()` returns enabled connection IDs via service-role.
+  - Route at `src/app/api/cron/sync-tradelocker/route.ts` checks `Authorization: Bearer ${CRON_SECRET}` header (Vercel auto-injects when env var is set), then sweeps each connection sequentially. Per-connection try/catch so a single broken account doesn't fail the whole sweep.
+  - `vercel.json` schedules daily at 06:00 UTC (= 1 AM ET, after NY session close so morning view has yesterday's trades).
+
+  **User action required to activate:**
+  ```bash
+  cd app
+  npx vercel env add CRON_SECRET production
+  # paste a long random string (e.g. `openssl rand -hex 32`)
+  npx vercel env add SUPABASE_SERVICE_ROLE_KEY production  # if not done in #8
+  npx vercel --prod --yes
+  ```
+  Manual test: `curl -H "Authorization: Bearer $CRON_SECRET" https://4x-journal.vercel.app/api/cron/sync-tradelocker` — should return JSON summary with per-connection results.
 
 ---
 

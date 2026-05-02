@@ -197,6 +197,22 @@ export async function updateBehavior(_prev: SettingsFormState, formData: FormDat
   return applyPatch(parsed.data as Update)
 }
 
+// ─── Onboarding ────────────────────────────────────────────────────────────
+/**
+ * Mark the wizard as complete (or explicitly skipped). Layout reads
+ * onboarded_at to decide whether to show the modal on next page load.
+ */
+export async function completeOnboarding(): Promise<{ ok: boolean; error?: string }> {
+  const { user, supabase } = await getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+  const { error } = await supabase
+    .from("user_settings")
+    .upsert({ user_id: user.id, onboarded_at: new Date().toISOString() }, { onConflict: "user_id" })
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/", "layout")
+  return { ok: true }
+}
+
 // ─── Webhook secret rotation ───────────────────────────────────────────────
 export async function regenerateWebhookSecret() {
   const { user, supabase } = await getUser()

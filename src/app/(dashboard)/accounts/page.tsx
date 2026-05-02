@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getUserAccounts, getAccountSparks } from "@/lib/queries/accounts"
 import { AccountCard, AddAccountButton, type AccountConnection } from "@/components/accounts/account-card"
 import { AllocationBar } from "@/components/accounts/allocation-bar"
+import { CsvImportButton } from "@/components/accounts/csv-import-modal"
 import { formatMoney, parseFxRates, sumInDisplayCurrency } from "@/lib/money"
 
 export default async function AccountsPage() {
@@ -116,7 +117,12 @@ export default async function AccountsPage() {
       <SectionHeader
         title={m.title}
         subtitle={`${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${liveCount} live`}
-        actions={<AddAccountButton />}
+        actions={
+          <div style={{ display: "flex", gap: 8 }}>
+            <CsvImportButton />
+            <AddAccountButton />
+          </div>
+        }
       />
 
       {/* Top KPI strip */}

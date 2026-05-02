@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { createClient as createServiceRoleClient, type SupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { computePnL } from "@/lib/finance"
+import type { Database } from "@/lib/supabase/database.types"
 import {
   tlGetAccounts,
   tlLogin,
@@ -11,6 +13,21 @@ import {
   TLError,
   type TradeLockerEnv,
 } from "@/lib/integrations/tradelocker/client"
+
+type Supa = SupabaseClient<Database>
+
+/**
+ * Build a service-role Supabase client for cron / webhook use.
+ * Returns null when the env var is missing (caller should fail loudly).
+ */
+function createAdminSupabase(): Supa | null {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return null
+  return createServiceRoleClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  )
+}
 
 const ConnectSchema = z.object({
   env: z.enum(["demo", "live"]),
@@ -138,17 +155,20 @@ export async function connectTradeLocker(
   return { ok: true, createdAccounts: created, connectionIds }
 }
 
-export async function syncTradeLockerConnection(connectionId: string): Promise<{ ok: boolean; error?: string; tradesUpserted?: number; attempts?: unknown; debug?: unknown }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, error: "Not signed in." }
-
+/**
+ * Core sync logic — works with either a cookie-authed Supabase client (RLS-gated)
+ * or a service-role client (used by cron / webhooks). Reads user_id from the
+ * connection row instead of from auth.getUser() so admin contexts work.
+ */
+async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promise<{ ok: boolean; error?: string; tradesUpserted?: number; attempts?: unknown; debug?: unknown }> {
   const { data: conn, error } = await supabase
     .from("broker_connections")
     .select("*")
     .eq("id", connectionId)
     .single()
   if (error || !conn) return { ok: false, error: error?.message ?? "Connection not found." }
+
+  const userId = conn.user_id
 
   const creds = conn.credentials as { email?: string; password?: string; server?: string; env?: TradeLockerEnv }
   const meta = conn.external_account_meta as { accNum?: string }
@@ -215,7 +235,7 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
   //   4. Trigger recomputes parent aggregates from fills.
   const all = [...pull.open, ...pull.closed]
   const rows = all.map((p) => ({
-    user_id: user.id,
+    user_id: userId,
     account_id: conn.account_id,
     external_id: p.externalId,
     external_provider: "tradelocker",
@@ -271,7 +291,7 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
       if (p.openedAt) {
         fills.push({
           trade_id: tradeId,
-          user_id: user.id,
+          user_id: userId,
           kind: "entry",
           reason: "broker_sync",
           price: p.entryPrice,
@@ -285,7 +305,7 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
       if (p.status === "closed" && p.exitPrice != null && p.closedAt) {
         fills.push({
           trade_id: tradeId,
-          user_id: user.id,
+          user_id: userId,
           kind: "exit",
           reason: "broker_sync",
           price: p.exitPrice,
@@ -324,6 +344,46 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
   revalidatePath("/dashboard")
   revalidatePath("/ledger")
   return { ok: true, tradesUpserted: upserted, attempts: pull.attempts }
+}
+
+/**
+ * User-initiated sync — gated by Supabase auth cookie.
+ */
+export async function syncTradeLockerConnection(connectionId: string): Promise<{ ok: boolean; error?: string; tradesUpserted?: number; attempts?: unknown; debug?: unknown }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+  return _syncTradeLockerCore(connectionId, supabase)
+}
+
+/**
+ * Admin / cron sync — uses service-role client. RLS bypass means we trust the
+ * caller (the cron route), so make sure that route gates on CRON_SECRET.
+ */
+export async function syncTradeLockerConnectionAdmin(connectionId: string): Promise<{ ok: boolean; error?: string; tradesUpserted?: number; attempts?: unknown; debug?: unknown }> {
+  const supabase = createAdminSupabase()
+  if (!supabase) {
+    return { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY not configured" }
+  }
+  return _syncTradeLockerCore(connectionId, supabase)
+}
+
+/**
+ * List all enabled TradeLocker connections — for the cron sweep.
+ * Uses the service-role client; gate the caller with CRON_SECRET.
+ */
+export async function listTradeLockerConnections(): Promise<{ ok: boolean; error?: string; ids?: string[] }> {
+  const supabase = createAdminSupabase()
+  if (!supabase) return { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY not configured" }
+
+  const { data, error } = await supabase
+    .from("broker_connections")
+    .select("id")
+    .eq("provider", "tradelocker")
+    .eq("enabled", true)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, ids: (data ?? []).map((r) => r.id) }
 }
 
 export async function disconnectTradeLockerConnection(connectionId: string, opts: { deleteTrades?: boolean } = {}) {

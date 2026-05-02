@@ -536,6 +536,7 @@ export type Database = {
           notify_payout: boolean
           notify_rules_violation: boolean
           notify_weekly_report: boolean
+          onboarded_at: string | null
           pnl_display: string
           require_journal_mood: boolean
           require_journal_note: boolean
@@ -585,6 +586,7 @@ export type Database = {
           notify_payout?: boolean
           notify_rules_violation?: boolean
           notify_weekly_report?: boolean
+          onboarded_at?: string | null
           pnl_display?: string
           require_journal_mood?: boolean
           require_journal_note?: boolean
@@ -634,6 +636,7 @@ export type Database = {
           notify_payout?: boolean
           notify_rules_violation?: boolean
           notify_weekly_report?: boolean
+          onboarded_at?: string | null
           pnl_display?: string
           require_journal_mood?: boolean
           require_journal_note?: boolean
