@@ -55,6 +55,62 @@ export type Database = {
         }
         Relationships: []
       }
+      broker_connections: {
+        Row: {
+          account_id: string
+          created_at: string
+          credentials: Json
+          enabled: boolean
+          external_account_id: string
+          external_account_meta: Json
+          id: string
+          last_sync_error: string | null
+          last_sync_status: string | null
+          last_synced_at: string | null
+          provider: string
+          tokens: Json | null
+          trades_synced: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          credentials?: Json
+          enabled?: boolean
+          external_account_id: string
+          external_account_meta?: Json
+          id?: string
+          last_sync_error?: string | null
+          last_sync_status?: string | null
+          last_synced_at?: string | null
+          provider: string
+          tokens?: Json | null
+          trades_synced?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          credentials?: Json
+          enabled?: boolean
+          external_account_id?: string
+          external_account_meta?: Json
+          id?: string
+          last_sync_error?: string | null
+          last_sync_status?: string | null
+          last_synced_at?: string | null
+          provider?: string
+          tokens?: Json | null
+          trades_synced?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          { foreignKeyName: "broker_connections_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] }
+        ]
+      }
       economic_events: {
         Row: {
           actual: string | null
@@ -287,6 +343,8 @@ export type Database = {
           created_at: string
           entry_price: number
           exit_price: number | null
+          external_id: string | null
+          external_provider: string | null
           id: string
           mood: string | null
           notes: string | null
@@ -311,6 +369,8 @@ export type Database = {
           created_at?: string
           entry_price: number
           exit_price?: number | null
+          external_id?: string | null
+          external_provider?: string | null
           id?: string
           mood?: string | null
           notes?: string | null
@@ -335,6 +395,8 @@ export type Database = {
           created_at?: string
           entry_price?: number
           exit_price?: number | null
+          external_id?: string | null
+          external_provider?: string | null
           id?: string
           mood?: string | null
           notes?: string | null

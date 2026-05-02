@@ -6,9 +6,19 @@ import { Icon } from "@/components/icons"
 import { deleteAccount, setDefaultAccount } from "@/lib/actions/accounts"
 import { formatUSD } from "@/lib/finance"
 import { AccountFormModal } from "./account-form-modal"
+import { SyncTradeLockerButton } from "./sync-button"
 import type { Account } from "./accounts-context"
 
-export function AccountCard({ account, tradeCount }: { account: Account; tradeCount: number }) {
+export type AccountConnection = {
+  id: string
+  provider: string
+  last_synced_at: string | null
+  last_sync_status: string | null
+  last_sync_error: string | null
+  trades_synced: number
+}
+
+export function AccountCard({ account, tradeCount, connection }: { account: Account; tradeCount: number; connection?: AccountConnection | null }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -71,7 +81,23 @@ export function AccountCard({ account, tradeCount }: { account: Account; tradeCo
             {tradeCount} trade{tradeCount === 1 ? "" : "s"}
           </span>
           <span className="chip" style={{ fontSize: 10.5 }}>{account.currency}</span>
+          {connection && (
+            <span className="chip chip-purple" style={{ fontSize: 10.5 }}>
+              <Icon name="external" size={10} />
+              {connection.provider === "tradelocker" ? "TradeLocker linked" : connection.provider}
+            </span>
+          )}
         </div>
+
+        {connection ? (
+          <SyncTradeLockerButton
+            connectionId={connection.id}
+            lastSyncedAt={connection.last_synced_at}
+            lastStatus={connection.last_sync_status}
+            lastError={connection.last_sync_error}
+            tradesSynced={connection.trades_synced}
+          />
+        ) : null}
 
         <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
           <button onClick={() => setEditing(true)} className="btn" style={{ flex: 1, justifyContent: "center" }}>
@@ -83,9 +109,11 @@ export function AccountCard({ account, tradeCount }: { account: Account; tradeCo
               <Icon name="check" size={12} />
             </button>
           )}
-          <button onClick={onDelete} disabled={pending} className="btn" title="Delete">
-            <Icon name="x" size={12} />
-          </button>
+          {!connection && (
+            <button onClick={onDelete} disabled={pending} className="btn" title="Delete">
+              <Icon name="x" size={12} />
+            </button>
+          )}
         </div>
       </div>
 
