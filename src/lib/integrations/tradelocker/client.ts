@@ -175,16 +175,17 @@ function normalizeAccounts(body: unknown): TLAccount[] {
   })
 }
 
-function pickArray(body: unknown): unknown[] {
+function pickArray(body: unknown, keys: string[] = ["accounts", "data", "positions", "ordersHistory", "orders", "filledOrders", "instruments"]): unknown[] {
   if (Array.isArray(body)) return body
-  if (body && typeof body === "object") {
-    const o = body as Record<string, unknown>
-    if (Array.isArray(o.accounts)) return o.accounts
-    if (Array.isArray(o.data)) return o.data
-    if (o.d && typeof o.d === "object") {
-      const d = o.d as Record<string, unknown>
-      if (Array.isArray(d.accounts)) return d.accounts
-      if (Array.isArray(d.data)) return d.data
+  if (!body || typeof body !== "object") return []
+  const o = body as Record<string, unknown>
+  for (const k of keys) {
+    if (Array.isArray(o[k])) return o[k] as unknown[]
+  }
+  if (o.d && typeof o.d === "object") {
+    const d = o.d as Record<string, unknown>
+    for (const k of keys) {
+      if (Array.isArray(d[k])) return d[k] as unknown[]
     }
   }
   return []
@@ -203,6 +204,13 @@ function pickArray(body: unknown): unknown[] {
  * https://public-api.tradelocker.com/reference/getordershistory
  * https://public-api.tradelocker.com/reference/getconfigusingget
  */
+export type TLAccountState = {
+  balance: number | null
+  projectedBalance: number | null
+  availableFunds: number | null
+  raw: Record<string, unknown> | null
+}
+
 export async function tlSyncTrades(args: {
   env: TradeLockerEnv
   accessToken: string
@@ -211,8 +219,8 @@ export async function tlSyncTrades(args: {
 }): Promise<{
   open: TLPosition[]
   closed: TLPosition[]
-  attempts: Array<{ kind: "config" | "positions" | "history" | "state"; path: string; ok: boolean; status?: number; sample?: unknown; error?: string }>
-  state?: unknown
+  attempts: Array<{ kind: "config" | "positions" | "history" | "state" | "instruments"; path: string; ok: boolean; status?: number; sample?: unknown; error?: string }>
+  state?: TLAccountState
 }> {
   const base = TL_BASE_URL[args.env]
   const baseHeaders = {
@@ -221,59 +229,173 @@ export async function tlSyncTrades(args: {
     "acc-num": args.accNum,
   }
 
-  const attempts: Array<{ kind: "config" | "positions" | "history" | "state"; path: string; ok: boolean; status?: number; sample?: unknown; error?: string }> = []
+  const attempts: Array<{ kind: "config" | "positions" | "history" | "state" | "instruments"; path: string; ok: boolean; status?: number; sample?: unknown; error?: string }> = []
 
-  // 1) Fetch config to learn column order. Without it, we can't decode rows.
+  // 1) /trade/config — column order per resource. Without this, rows are
+  //    just opaque arrays.
   let positionColumns: string[] = []
   let historyColumns: string[] = []
+  let accountColumns: string[] = []
   try {
     const r = await tlFetch(base, "/trade/config", { headers: baseHeaders })
     attempts.push({ kind: "config", path: "/trade/config", ok: true, status: r.status, sample: trim(r.body) })
     positionColumns = extractColumns(r.body, ["positionsConfig", "positions"])
     historyColumns = extractColumns(r.body, ["ordersHistoryConfig", "ordersHistory", "orderHistory"])
+    accountColumns = extractColumns(r.body, ["accountDetailsConfig", "accountDetails"])
   } catch (e) {
     const err = e instanceof TLError ? e : null
     attempts.push({ kind: "config", path: "/trade/config", ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
   }
 
-  // 2) Open positions.
+  // 2) Instruments — map tradableInstrumentId → symbol so we can show
+  //    "EUR/USD" instead of an opaque numeric id.
+  const instrumentMap = new Map<string, string>()
+  try {
+    const r = await tlFetch(base, `/trade/accounts/${args.accountId}/instruments`, { headers: baseHeaders })
+    attempts.push({ kind: "instruments", path: `/trade/accounts/${args.accountId}/instruments`, ok: true, status: r.status, sample: trim(r.body) })
+    for (const inst of pickArray(r.body)) {
+      if (inst && typeof inst === "object" && !Array.isArray(inst)) {
+        const o = inst as Record<string, unknown>
+        const id = String(o.tradableInstrumentId ?? o.id ?? "")
+        const sym = String(o.tradableInstrumentName ?? o.name ?? o.symbol ?? "")
+        if (id && sym) instrumentMap.set(id, sym)
+      }
+    }
+  } catch (e) {
+    const err = e instanceof TLError ? e : null
+    attempts.push({ kind: "instruments", path: `/trade/accounts/${args.accountId}/instruments`, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
+  }
+
+  // 3) Open positions.
   let openObjects: Array<Record<string, unknown>> = []
   try {
     const r = await tlFetch(base, `/trade/accounts/${args.accountId}/positions`, { headers: baseHeaders })
     attempts.push({ kind: "positions", path: `/trade/accounts/${args.accountId}/positions`, ok: true, status: r.status, sample: trim(r.body) })
-    openObjects = decodeRows(r.body, positionColumns)
+    openObjects = decodeRows(r.body, positionColumns, ["positions"])
   } catch (e) {
     const err = e instanceof TLError ? e : null
     attempts.push({ kind: "positions", path: `/trade/accounts/${args.accountId}/positions`, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
   }
 
-  // 3) Closed orders.
+  // 4) Closed orders.
   let closedObjects: Array<Record<string, unknown>> = []
   try {
     const r = await tlFetch(base, `/trade/accounts/${args.accountId}/ordersHistory`, { headers: baseHeaders })
     attempts.push({ kind: "history", path: `/trade/accounts/${args.accountId}/ordersHistory`, ok: true, status: r.status, sample: trim(r.body) })
-    closedObjects = decodeRows(r.body, historyColumns)
+    closedObjects = decodeRows(r.body, historyColumns, ["ordersHistory"])
   } catch (e) {
     const err = e instanceof TLError ? e : null
     attempts.push({ kind: "history", path: `/trade/accounts/${args.accountId}/ordersHistory`, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
   }
 
-  // 4) Account state for balance/equity (best-effort, not blocking).
-  let state: unknown = undefined
+  // 5) Account state — TL returns { d: { accountDetailsData: [v1, v2, ...] } }
+  //    where the array indices match accountDetailsConfig.columns.
+  let state: TLAccountState | undefined
   try {
     const r = await tlFetch(base, `/trade/accounts/${args.accountId}/state`, { headers: baseHeaders })
     attempts.push({ kind: "state", path: `/trade/accounts/${args.accountId}/state`, ok: true, status: r.status, sample: trim(r.body) })
-    state = r.body
+    state = decodeAccountState(r.body, accountColumns)
   } catch (e) {
     const err = e instanceof TLError ? e : null
     attempts.push({ kind: "state", path: `/trade/accounts/${args.accountId}/state`, ok: false, status: err?.status, error: err?.message ?? String(e) })
   }
 
+  // ordersHistory rows are individual orders (entry, SL, TP, cancellations).
+  // Group by positionId and pair the opener (isOpen=true) with the closer
+  // (isOpen=false) to reconstruct one trade per closed position.
+  const closed = reconstructClosedTrades(closedObjects, instrumentMap)
+
   return {
-    open: openObjects.map((o) => objectToPosition(o, "open")).filter(isValid),
-    closed: closedObjects.map((o) => objectToPosition(o, "closed")).filter(isValid),
+    open: openObjects.map((o) => objectToPosition(o, "open", instrumentMap)).filter(isValid),
+    closed,
     attempts,
     state,
+  }
+}
+
+/**
+ * TradeLocker stores orders, not trades. A single round-trip trade is a
+ * pair of Filled orders sharing a positionId — one with isOpen=true (the
+ * entry) and one with isOpen=false (the exit, typically the SL or TP that
+ * hit). Cancelled orders are the OCO siblings; ignore them.
+ */
+function reconstructClosedTrades(
+  orderRows: Array<Record<string, unknown>>,
+  instrumentMap: Map<string, string>,
+): TLPosition[] {
+  const byPosition = new Map<string, Array<Record<string, unknown>>>()
+  for (const o of orderRows) {
+    const pid = o.positionId != null ? String(o.positionId) : ""
+    if (!pid) continue
+    let arr = byPosition.get(pid)
+    if (!arr) { arr = []; byPosition.set(pid, arr) }
+    arr.push(o)
+  }
+
+  const out: TLPosition[] = []
+  for (const [positionId, orders] of byPosition) {
+    const filled = orders.filter((o) => /fill/i.test(String(o.status ?? "")))
+    if (filled.length === 0) continue
+
+    const opener = filled.find((o) => isTrue(o.isOpen)) ?? filled[0]
+    const closer = filled.find((o) => isFalse(o.isOpen))
+    if (!closer) continue // still open — handled by /positions endpoint
+
+    // Side comes from the opening order ("buy" → long, "sell" → short).
+    const side = inferSide(opener)
+    const instId = opener.tradableInstrumentId != null ? String(opener.tradableInstrumentId) : ""
+    const symbol = (instId && instrumentMap.get(instId)) ?? ""
+    const entry = num(opener.avgPrice ?? opener.price) ?? 0
+    const exit = num(closer.avgPrice ?? closer.price)
+    const size = num(opener.filledQty ?? opener.qty) ?? 0
+
+    out.push({
+      externalId: positionId,
+      pair: prettyPair(symbol),
+      side,
+      size,
+      entryPrice: entry,
+      stopPrice: num(opener.stopLoss),
+      targetPrice: num(opener.takeProfit),
+      exitPrice: exit,
+      pnl: null,                // computed in the action via finance.ts
+      status: "closed",
+      openedAt: tlTimestamp(opener.lastModified ?? opener.createdDate) ?? new Date().toISOString(),
+      closedAt: tlTimestamp(closer.lastModified ?? closer.createdDate),
+      raw: { opener, closer, allOrders: orders },
+    })
+  }
+
+  return out.filter(isValid)
+}
+
+function isTrue(v: unknown): boolean {
+  if (v === true) return true
+  if (typeof v === "string") return /^(true|1|yes)$/i.test(v.trim())
+  return false
+}
+function isFalse(v: unknown): boolean {
+  if (v === false) return true
+  if (typeof v === "string") return /^(false|0|no)$/i.test(v.trim())
+  return false
+}
+
+function decodeAccountState(body: unknown, columns: string[]): TLAccountState | undefined {
+  if (!body || typeof body !== "object") return undefined
+  const root = "d" in body ? (body as { d: unknown }).d : body
+  if (!root || typeof root !== "object") return undefined
+  const r = root as Record<string, unknown>
+  const arr = (Array.isArray(r.accountDetailsData) ? r.accountDetailsData : null) as unknown[] | null
+  if (!arr) return undefined
+  const obj: Record<string, unknown> = {}
+  if (columns.length > 0) {
+    columns.forEach((col, i) => { obj[col] = arr[i] })
+  }
+  return {
+    balance: num(obj.balance),
+    projectedBalance: num(obj.projectedBalance),
+    availableFunds: num(obj.availableFunds),
+    raw: obj,
   }
 }
 
@@ -316,8 +438,8 @@ function extractColumns(body: unknown, keys: string[]): string[] {
  * positional arrays, or wrapped in { d: { positions: [...] } }) and return
  * an array of plain objects keyed by `columns` for positional rows.
  */
-function decodeRows(body: unknown, columns: string[]): Array<Record<string, unknown>> {
-  const list = pickArray(body)
+function decodeRows(body: unknown, columns: string[], envelopeKeys: string[]): Array<Record<string, unknown>> {
+  const list = pickArray(body, envelopeKeys)
   if (list.length === 0) return []
 
   // Already objects? Use as-is.
@@ -334,28 +456,40 @@ function decodeRows(body: unknown, columns: string[]): Array<Record<string, unkn
     })
   }
 
-  // Mixed/unknown shape — return empty so we don't pretend to have data.
   return []
 }
 
-function objectToPosition(r: Record<string, unknown>, status: "open" | "closed"): TLPosition {
+function objectToPosition(r: Record<string, unknown>, status: "open" | "closed", instrumentMap: Map<string, string>): TLPosition {
   const side = inferSide(r)
-  const entry = num(r.openPrice ?? r.entryPrice ?? r.price ?? r.avgPrice ?? r.openAvgPrice)
+  // TL position rows: avgPrice = open price for positions.
+  // TL ordersHistory rows: avgPrice = filled execution price.
+  const entry = num(r.avgPrice ?? r.openPrice ?? r.entryPrice ?? r.price ?? r.openAvgPrice)
   const exit = num(r.closePrice ?? r.exitPrice ?? r.closeAvgPrice ?? null)
   const idCandidate = r.id ?? r.positionId ?? r.orderId ?? r.ticket ?? r.tradeId
+
+  // Resolve pair from instrument map first, fall back to direct symbol fields.
+  const instId = r.tradableInstrumentId != null ? String(r.tradableInstrumentId) : ""
+  const symbol =
+    (instId && instrumentMap.get(instId))
+    ?? (typeof r.symbol === "string" ? r.symbol : "")
+    ?? (typeof r.tradableInstrumentName === "string" ? r.tradableInstrumentName : "")
+    ?? (typeof r.instrumentName === "string" ? r.instrumentName : "")
+    ?? (typeof r.pair === "string" ? r.pair : "")
+    ?? ""
+
   return {
     externalId: idCandidate != null ? String(idCandidate) : "",
-    pair: prettyPair(String(r.symbol ?? r.instrument ?? r.tradableInstrumentName ?? r.pair ?? r.instrumentName ?? "")),
+    pair: prettyPair(symbol),
     side,
-    size: num(r.qty ?? r.quantity ?? r.size ?? r.volume ?? r.lots) ?? 0,
+    size: num(r.qty ?? r.filledQty ?? r.quantity ?? r.size ?? r.volume ?? r.lots) ?? 0,
     entryPrice: entry ?? 0,
     stopPrice: num(r.stopLoss ?? r.sl ?? r.stopPrice),
     targetPrice: num(r.takeProfit ?? r.tp ?? r.targetPrice),
     exitPrice: exit,
-    pnl: num(r.pnl ?? r.profit ?? r.realizedPnL ?? r.netPnL ?? r.profitLoss),
+    pnl: num(r.unrealizedPl ?? r.realizedPnL ?? r.pnl ?? r.profit ?? r.netPnL ?? r.profitLoss),
     status,
-    openedAt: tlTimestamp(r.openTime ?? r.openedAt ?? r.createdAt ?? r.openTimestamp ?? r.timestamp) ?? new Date().toISOString(),
-    closedAt: status === "closed" ? tlTimestamp(r.closeTime ?? r.closedAt ?? r.closeTimestamp ?? r.lastUpdateTimestamp) : null,
+    openedAt: tlTimestamp(r.openDate ?? r.createdDate ?? r.openTime ?? r.openedAt ?? r.openTimestamp ?? r.timestamp) ?? new Date().toISOString(),
+    closedAt: status === "closed" ? tlTimestamp(r.lastModified ?? r.closeTime ?? r.closedAt ?? r.closeTimestamp ?? r.lastUpdateTimestamp) : null,
     raw: r,
   }
 }
@@ -387,10 +521,13 @@ function trim(body: unknown): unknown {
 }
 
 function inferSide(r: Record<string, unknown>): "long" | "short" {
-  const s = String(r.side ?? r.direction ?? r.type ?? "").toLowerCase()
+  const s = String(r.side ?? r.direction ?? "").toLowerCase()
   if (s.includes("buy") || s.includes("long")) return "long"
   if (s.includes("sell") || s.includes("short")) return "short"
-  // Fallback: positive qty = long, negative = short.
+  // Numeric encoding: +1/positive = long, -1/negative = short.
+  const sideNum = Number(r.side ?? NaN)
+  if (isFinite(sideNum)) return sideNum < 0 ? "short" : "long"
+  // Last resort — fall back to qty sign.
   const qty = Number(r.qty ?? r.size ?? 0)
   return qty < 0 ? "short" : "long"
 }

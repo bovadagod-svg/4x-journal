@@ -184,6 +184,16 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
     .update({ external_account_meta: debugMeta })
     .eq("id", connectionId)
 
+  // Live-update local account balance/equity from TradeLocker state.
+  if (pull.state) {
+    const patch: { balance?: number; equity?: number } = {}
+    if (pull.state.balance != null) patch.balance = pull.state.balance
+    if (pull.state.projectedBalance != null) patch.equity = pull.state.projectedBalance
+    if (Object.keys(patch).length > 0) {
+      await supabase.from("accounts").update(patch).eq("id", conn.account_id)
+    }
+  }
+
   // Upsert trades. external_id is unique per (account_id, external_provider, external_id).
   const all = [...pull.open, ...pull.closed]
   const rows = all.map((p) => ({
