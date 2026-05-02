@@ -345,7 +345,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 21. `[ ]` Test coverage (zero today)
+### 21. `[x]` Test coverage (zero today)
 
 **Why:** Plan called for `pnpm test` between phases. We never wrote one. Highest-value smoke tests:
 
@@ -368,9 +368,9 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 ## ⚪ Polish (later)
 
 - `[ ]` **Empty state copy audit** — some are placeholder, not punchy
-- `[ ]` **Keyboard shortcuts** — `/` for search, `c` to log trade, `g`+letter for navigation
+- `[x]` **Keyboard shortcuts** — `c` to log trade, `?` for help, `g`+letter for navigation
 - `[ ]` **Global command palette (cmd-K)** — power-user fast nav
-- `[ ]` **Error boundaries** — server actions throw, page just dies; wrap each route segment
+- `[x]` **Error boundaries** — server actions throw, page just dies; wrap each route segment
 - `[ ]` **In-app help docs** — Settings has "Help docs" button in prototype that goes nowhere
 - `[ ]` **Sentry / error tracking in prod**
 - `[ ]` **Avatar upload** — currently gradient-initials only
