@@ -10,6 +10,7 @@ import { AccountsProvider } from "@/components/accounts/accounts-context"
 import { JournalDrawerProvider } from "@/components/journal/journal-drawer-context"
 import { TradeDetailDrawerProvider } from "@/components/trades/trade-detail-drawer-context"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
+import { getNewsAvoidanceContext } from "@/lib/queries/news-avoidance"
 
 export default async function DashboardLayout({
   children,
@@ -22,7 +23,7 @@ export default async function DashboardLayout({
   } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const [{ data: row }, accounts, playbooks] = await Promise.all([
+  const [{ data: row }, accounts, playbooks, newsContext] = await Promise.all([
     supabase
       .from("user_settings")
       .select("theme, accent, density, empty_state, account_scope, sizing_method, default_risk_pct, default_fixed_lots, default_playbook_id, require_journal_note, require_journal_screenshot, require_journal_mood, confirm_above_pct")
@@ -30,6 +31,7 @@ export default async function DashboardLayout({
       .maybeSingle(),
     getUserAccounts(),
     getUserPlaybooks(),
+    getNewsAvoidanceContext(),
   ])
 
   const initial: Tweaks = row
@@ -54,6 +56,10 @@ export default async function DashboardLayout({
     require_journal_note: requireJournalNote,
     require_journal_mood: requireJournalMood,
     confirm_above_pct: Number(row?.confirm_above_pct ?? 1.0),
+    news_avoidance: {
+      enabled: newsContext.enabled,
+      events: newsContext.events,
+    },
   }
 
   return (

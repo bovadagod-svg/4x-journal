@@ -34,7 +34,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 2. `[ ]` Enforce `news_avoidance` at trade entry
+### 2. `[x]` Enforce `news_avoidance` at trade entry
 
 **Why:** Toggle exists in Settings → Behavior rules. Pre-flight should check `economic_events` table — if a `high`-impact event matches the trade pair's currencies and is within `news_avoidance_minutes_before/after` of `now`, show a warning (or block, depending on UX choice).
 
@@ -47,7 +47,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~1 hour
 
-**Notes:**
+**Notes:** 2026-05-02 — Implemented as a client-side `window.confirm()` matching the `confirm_above_pct` pattern (#4) instead of a hard server-side block, because news-avoidance is a personal-discipline tool not a security boundary. New `lib/queries/news-avoidance.ts` exposes `getNewsAvoidanceContext()` — reads the user's settings + window, fetches high-impact events whose blocked window `[event - before, event + after]` overlaps `now`. `(dashboard)/layout.tsx` calls it once and passes through `TradeDefaults.news_avoidance`. `LogTradeModal.onSubmit` splits the pair into currency codes, finds matching events, fires confirm() listing each event with relative time ("USD CPI in 4m"). Cancel → `e.preventDefault()`. Pending orders skip the check. Server-side backstop intentionally skipped — soft warning by user's own request.
 
 ---
 

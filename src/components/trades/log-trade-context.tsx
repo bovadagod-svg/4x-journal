@@ -9,6 +9,14 @@ type Playbook = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "n
 
 type Ctx = { open: () => void; close: () => void; isOpen: boolean }
 
+export type NewsAvoidanceEvent = {
+  id: string
+  currency: string
+  event: string
+  impact: string
+  scheduled_at: string
+}
+
 export type TradeDefaults = {
   sizing_method: "fixed-risk" | "fixed-lots" | "kelly" | "volatility-scaled"
   default_risk_pct: number
@@ -18,6 +26,15 @@ export type TradeDefaults = {
   require_journal_mood: boolean
   /** Risk-as-%-of-equity threshold above which a confirm dialog fires. */
   confirm_above_pct: number
+  /**
+   * News-avoidance context. Server has already filtered down to high-impact
+   * events whose blocked window overlaps `now`. Modal just needs to match by
+   * pair currencies on submit.
+   */
+  news_avoidance: {
+    enabled: boolean
+    events: NewsAvoidanceEvent[]
+  }
 }
 
 const LogTradeContext = createContext<Ctx | null>(null)

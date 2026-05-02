@@ -102,6 +102,34 @@ export function LogTradeModal({
         action={action}
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
+          // News avoidance: warn when the trade's pair currencies collide with
+          // an upcoming high-impact event inside the user's warn window.
+          // Pending orders skip this — they fill later, news is irrelevant now.
+          if (status !== "pending" && defaults.news_avoidance.enabled && defaults.news_avoidance.events.length > 0) {
+            const ccys = pair.split("/").map((c) => c.trim().toUpperCase()).filter(Boolean)
+            const colliding = defaults.news_avoidance.events.filter((ev) => ccys.includes(ev.currency.toUpperCase()))
+            if (colliding.length > 0) {
+              const now = Date.now()
+              const lines = colliding.map((ev) => {
+                const t = new Date(ev.scheduled_at).getTime()
+                const diffMin = Math.round((t - now) / 60_000)
+                const when = diffMin === 0
+                  ? "now"
+                  : diffMin > 0
+                    ? `in ${diffMin}m`
+                    : `${Math.abs(diffMin)}m ago`
+                return `• ${ev.currency} ${ev.event} (${when})`
+              }).join("\n")
+              const ok = window.confirm(
+                `News-avoidance window: high-impact event${colliding.length > 1 ? "s" : ""} on this pair.\n\n${lines}\n\nSubmit anyway?`,
+              )
+              if (!ok) {
+                e.preventDefault()
+                return
+              }
+            }
+          }
+
           // confirm_above_pct: warn before submit when risk_amount as % of equity
           // exceeds the user's threshold. Pending orders skip this — no risk yet.
           if (status === "pending") return
