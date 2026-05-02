@@ -17,6 +17,9 @@ const ConnectSchema = z.object({
   email: z.email({ error: "Valid email required." }),
   password: z.string().min(1, { error: "Password required." }),
   server: z.string().min(1, { error: "Server (e.g. OSP-DEMO) required." }),
+  // Optional user-provided overrides — applied to NEW account rows only.
+  label: z.string().max(60).optional().or(z.literal("").transform(() => undefined)),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).optional().or(z.literal("").transform(() => undefined)),
 })
 
 export type ConnectTLState =
@@ -65,8 +68,10 @@ export async function connectTradeLocker(
 
   const connectionIds: string[] = []
   let created = 0
+  const userLabel = parsed.data.label?.trim()
+  const userColor = parsed.data.color
 
-  for (const tl of accounts) {
+  for (const [idx, tl] of accounts.entries()) {
     // 1) Insert (or find) the matching account row in our DB. Default
     //    label = TradeLocker name; broker = "TradeLocker"; status = env.
     const { data: existing } = await supabase
@@ -81,16 +86,23 @@ export async function connectTradeLocker(
     if (existing) {
       accountRowId = existing.account_id
     } else {
-      const friendlyLabel = prettyTLLabel({ name: tl.name, accountId: tl.id, accNum: tl.accNum })
+      const autoLabel = prettyTLLabel({ name: tl.name, accountId: tl.id, accNum: tl.accNum })
+      // User's label applies to the first new account; if multiple TL accounts
+      // come back, subsequent ones get the auto label so they're distinguishable.
+      const labelToUse = userLabel
+        ? (idx === 0 ? userLabel : `${userLabel} · ${autoLabel}`)
+        : autoLabel
+      const colorToUse = userColor ?? (env === "live" ? "#11C458" : "#6932D4")
+
       const { data: newAcc, error: accErr } = await supabase
         .from("accounts")
         .insert({
           user_id: user.id,
           broker: "TradeLocker",
-          label: friendlyLabel,
+          label: labelToUse,
           currency: tl.currency ?? "USD",
           status: env === "live" ? "live" : "demo",
-          color: env === "live" ? "#11C458" : "#6932D4",
+          color: colorToUse,
         })
         .select("id")
         .single()

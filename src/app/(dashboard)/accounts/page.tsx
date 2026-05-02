@@ -4,7 +4,6 @@ import { SECTION_META } from "@/lib/sections"
 import { createClient } from "@/lib/supabase/server"
 import { getUserAccounts, getAccountSparks } from "@/lib/queries/accounts"
 import { AccountCard, AddAccountButton, type AccountConnection } from "@/components/accounts/account-card"
-import { ConnectTradeLockerButton } from "@/components/accounts/connect-tradelocker"
 import { AllocationBar } from "@/components/accounts/allocation-bar"
 import { formatUSD } from "@/lib/finance"
 
@@ -19,12 +18,7 @@ export default async function AccountsPage() {
         <SectionHeader
           title={m.title}
           subtitle={m.subtitle}
-          actions={
-            <div style={{ display: "flex", gap: 8 }}>
-              <ConnectTradeLockerButton />
-              <AddAccountButton />
-            </div>
-          }
+          actions={<AddAccountButton />}
         />
         <SectionStub
           icon={m.icon}
@@ -81,12 +75,7 @@ export default async function AccountsPage() {
       <SectionHeader
         title={m.title}
         subtitle={`${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${liveCount} live`}
-        actions={
-          <div style={{ display: "flex", gap: 8 }}>
-            <ConnectTradeLockerButton />
-            <AddAccountButton />
-          </div>
-        }
+        actions={<AddAccountButton />}
       />
 
       {/* Top KPI strip */}
