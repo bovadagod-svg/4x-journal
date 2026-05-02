@@ -1,7 +1,7 @@
 import { SectionHeader } from "@/components/shell/section-header"
 import { SECTION_META } from "@/lib/sections"
-import { getOpenTrades, getJournalEntries, getTodayPnL, getUserTrades } from "@/lib/queries/trades"
-import { getEquityCurve, getOverallStats } from "@/lib/queries/analytics"
+import { getDisciplineStats, getOpenTrades, getJournalEntries, getPnLByPeriod, getUserTrades } from "@/lib/queries/trades"
+import { getEquityCurve, getOverallStats, getPairPerformance } from "@/lib/queries/analytics"
 import { getPlaybooksWithStats } from "@/lib/queries/playbooks"
 import { currenciesFromWatchlist, getUpcomingEvents, getWatchlist } from "@/lib/queries/watchlist"
 import { TickerTape } from "@/components/dashboard/ticker-tape"
@@ -18,6 +18,7 @@ import { AnalyticsSummary } from "@/components/dashboard/analytics-summary"
 import { SessionClock } from "@/components/dashboard/session-clock"
 import { PlaybooksCard } from "@/components/dashboard/playbooks-card"
 import { CalendarCard } from "@/components/dashboard/calendar-card"
+import { MoodCheckIn } from "@/components/dashboard/mood-checkin"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 
 export default async function DashboardPage() {
@@ -25,15 +26,17 @@ export default async function DashboardPage() {
   const watchlist = await getWatchlist()
   const watchCurrencies = currenciesFromWatchlist(watchlist)
 
-  const [today, openTrades, recentEntries, recentTrades, equity, stats, playbooks, events] = await Promise.all([
-    getTodayPnL(),
+  const [pnl, openTrades, recentEntries, recentTrades, equity, stats, pairs, playbooks, events, discipline] = await Promise.all([
+    getPnLByPeriod(),
     getOpenTrades(),
     getJournalEntries({ limit: 5 }),
     getUserTrades({ limit: 50 }),
     getEquityCurve(),
     getOverallStats(),
+    getPairPerformance(),
     getPlaybooksWithStats(),
     getUpcomingEvents({ currencies: watchCurrencies.length > 0 ? watchCurrencies : undefined, limit: 8 }),
+    getDisciplineStats(),
   ])
 
   return (
@@ -46,7 +49,7 @@ export default async function DashboardPage() {
 
       <CoachNudge stats={stats} />
 
-      <PnLStrip today={today} />
+      <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />
 
       <div className="grid-2-1">
         <EquityCurveCard points={equity} />
@@ -60,11 +63,18 @@ export default async function DashboardPage() {
 
       <RecentTrades trades={recentTrades} />
 
-      <AnalyticsSummary stats={stats} />
+      <AnalyticsSummary stats={stats} pairs={pairs} />
 
       <div className="grid-2-1">
         <JournalFeed entries={recentEntries} trades={recentTrades} />
-        <WatchlistWidget />
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
+          <MoodCheckIn
+            initialMood={discipline.todayMood as never}
+            rulesFollowedPct={discipline.rulesFollowedPct}
+            streakDays={discipline.streakDays}
+          />
+          <WatchlistWidget />
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "var(--density-gap)" }}>
