@@ -6,6 +6,7 @@ import { TweaksPanel } from "@/components/shell/tweaks-panel"
 import { TweaksProvider } from "@/lib/tweaks/tweaks-context"
 import { TWEAK_DEFAULTS, type Tweaks } from "@/lib/tweaks/types"
 import { LogTradeProvider } from "@/components/trades/log-trade-context"
+import { AccountsProvider } from "@/components/accounts/accounts-context"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
 
 export default async function DashboardLayout({
@@ -39,20 +40,20 @@ export default async function DashboardLayout({
       }
     : TWEAK_DEFAULTS
 
-  const defaultAccountId = accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? null
-
   return (
     <TweaksProvider initial={initial} userId={user.id}>
-      <LogTradeProvider accounts={accounts} playbooks={playbooks} defaultAccountId={defaultAccountId}>
-        <div className="app">
-          <Sidebar userEmail={user.email ?? null} />
-          <div className="main">
-            <TopBar />
-            <div className="content">{children}</div>
+      <AccountsProvider accounts={accounts}>
+        <LogTradeProvider playbooks={playbooks}>
+          <div className="app">
+            <Sidebar userEmail={user.email ?? null} />
+            <div className="main">
+              <TopBar />
+              <div className="content">{children}</div>
+            </div>
           </div>
-        </div>
-        <TweaksPanel />
-      </LogTradeProvider>
+          <TweaksPanel />
+        </LogTradeProvider>
+      </AccountsProvider>
     </TweaksProvider>
   )
 }

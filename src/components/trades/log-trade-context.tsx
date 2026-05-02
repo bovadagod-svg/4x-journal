@@ -2,9 +2,9 @@
 
 import { createContext, useContext, useState } from "react"
 import type { Database } from "@/lib/supabase/database.types"
+import { useAccounts } from "@/components/accounts/accounts-context"
 import { LogTradeModal } from "./log-trade-modal"
 
-type Account = Database["public"]["Tables"]["accounts"]["Row"]
 type Playbook = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "name" | "color" | "target_r">
 
 type Ctx = { open: () => void; close: () => void; isOpen: boolean }
@@ -12,17 +12,15 @@ type Ctx = { open: () => void; close: () => void; isOpen: boolean }
 const LogTradeContext = createContext<Ctx | null>(null)
 
 export function LogTradeProvider({
-  accounts,
   playbooks,
-  defaultAccountId,
   children,
 }: {
-  accounts: Account[]
   playbooks: Playbook[]
-  defaultAccountId: string | null
   children: React.ReactNode
 }) {
+  const { accounts } = useAccounts()
   const [isOpen, setOpen] = useState(false)
+  const defaultAccountId = accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? null
 
   return (
     <LogTradeContext.Provider value={{ open: () => setOpen(true), close: () => setOpen(false), isOpen }}>
