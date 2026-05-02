@@ -2,16 +2,18 @@ import { SectionHeader } from "@/components/shell/section-header"
 import { SectionStub } from "@/components/shell/section-stub"
 import { SECTION_META } from "@/lib/sections"
 import { Icon } from "@/components/icons"
-import { getUserTrades } from "@/lib/queries/trades"
-import { getUserAccounts } from "@/lib/queries/accounts"
-import { formatUSD } from "@/lib/finance"
-import { TradeRowActions } from "@/components/trades/trade-row-actions"
+import { getJournalEntries, getUserTrades } from "@/lib/queries/trades"
+import { getUserPlaybooks } from "@/lib/queries/accounts"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
+import { LedgerView } from "@/components/ledger/ledger-view"
 
 export default async function LedgerPage() {
   const m = SECTION_META.ledger
-  const [trades, accounts] = await Promise.all([getUserTrades(), getUserAccounts()])
-  const accountMap = new Map(accounts.map((a) => [a.id, a]))
+  const [trades, entries, playbooks] = await Promise.all([
+    getUserTrades({ limit: 1000 }),
+    getJournalEntries({ limit: 5000 }),
+    getUserPlaybooks(),
+  ])
 
   if (trades.length === 0) {
     return (
@@ -30,126 +32,46 @@ export default async function LedgerPage() {
     )
   }
 
+  // Build entry-by-trade map (most recent entry wins per trade — extras stay
+  // visible on the Journal page).
+  const entriesByTrade = new Map<string, typeof entries[number]>()
+  for (const e of entries) {
+    if (!e.trade_id) continue
+    const existing = entriesByTrade.get(e.trade_id)
+    if (!existing || new Date(e.last_edited_at) > new Date(existing.last_edited_at)) {
+      entriesByTrade.set(e.trade_id, e)
+    }
+  }
+
+  const playbookMap = new Map(playbooks.map((p) => [p.id, p.name]))
+
+  // Calculate dynamic subtitle: count trades and date range.
+  const earliest = trades[trades.length - 1]?.opened_at
+  const days = earliest ? Math.max(1, Math.round((Date.now() - new Date(earliest).getTime()) / (24 * 60 * 60 * 1000))) : 0
+
   return (
     <>
       <SectionHeader
         title={m.title}
-        subtitle={`${trades.length} trade${trades.length === 1 ? "" : "s"}`}
-        actions={<LogTradeButton />}
+        subtitle={`${trades.length} trade${trades.length === 1 ? "" : "s"}${days > 0 ? ` · last ${days} day${days === 1 ? "" : "s"}` : ""} · across all accounts`}
+        actions={
+          <>
+            <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
+              <Icon name="filter" size={13} /> <span>Saved views</span>
+            </button>
+            <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
+              <Icon name="external" size={13} /> <span>Import from MT4</span>
+            </button>
+            <LogTradeButton />
+          </>
+        }
       />
 
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <Th>Date</Th>
-                <Th>Account</Th>
-                <Th>Pair</Th>
-                <Th>Side</Th>
-                <Th align="right">Entry</Th>
-                <Th align="right">Exit</Th>
-                <Th align="right">Size</Th>
-                <Th align="right">R</Th>
-                <Th align="right">P&L</Th>
-                <Th>Status</Th>
-                <Th align="right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.map((t) => {
-                const acc = accountMap.get(t.account_id)
-                const pnlNum = Number(t.pnl)
-                const rNum = Number(t.r)
-                return (
-                  <tr key={t.id} style={{ borderTop: "1px solid var(--c-border)" }}>
-                    <Td>
-                      <span style={{ fontSize: 12, color: "var(--c-fg)" }}>
-                        {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                      <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)", display: "block", marginTop: 2 }}>
-                        {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                      </span>
-                    </Td>
-                    <Td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: acc?.color ?? "var(--c-fg-dim)" }} />
-                        <span style={{ fontSize: 12 }}>{acc?.label ?? "?"}</span>
-                      </div>
-                    </Td>
-                    <Td><span className="mono" style={{ fontSize: 12.5, fontWeight: 500 }}>{t.pair}</span></Td>
-                    <Td>
-                      <span className={`chip ${t.side === "long" ? "chip-green" : "chip-red"}`} style={{ fontSize: 10.5 }}>
-                        <Icon name={t.side === "long" ? "arrowUp" : "arrowDown"} size={11} />
-                        {t.side}
-                      </span>
-                    </Td>
-                    <TdMono align="right">{Number(t.entry_price).toFixed(5)}</TdMono>
-                    <TdMono align="right">{t.exit_price != null ? Number(t.exit_price).toFixed(5) : "—"}</TdMono>
-                    <TdMono align="right">{Number(t.size).toLocaleString()}</TdMono>
-                    <TdMono align="right" tone={rNum > 0 ? "green" : rNum < 0 ? "red" : undefined}>
-                      {t.r != null ? `${rNum > 0 ? "+" : ""}${rNum}R` : "—"}
-                    </TdMono>
-                    <TdMono align="right" tone={pnlNum > 0 ? "green" : pnlNum < 0 ? "red" : undefined}>
-                      {t.pnl != null ? formatUSD(pnlNum, { signed: true }) : "—"}
-                    </TdMono>
-                    <Td>
-                      <span className={`chip ${t.status === "open" ? "chip-purple" : t.status === "closed" ? "chip-green" : ""}`} style={{ fontSize: 10.5 }}>
-                        {t.status}
-                      </span>
-                    </Td>
-                    <Td align="right">
-                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <TradeRowActions tradeId={t.id} status={t.status} />
-                      </div>
-                    </Td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <LedgerView
+        trades={trades}
+        entriesByTrade={entriesByTrade}
+        playbookMap={playbookMap}
+      />
     </>
-  )
-}
-
-const tableStyle: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 12.5,
-}
-
-function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
-  return (
-    <th style={{
-      textAlign: align,
-      padding: "10px 12px",
-      fontSize: 10.5,
-      fontWeight: 600,
-      letterSpacing: "0.06em",
-      textTransform: "uppercase",
-      color: "var(--c-fg-dim)",
-      background: "var(--c-bg-elev-2)",
-      whiteSpace: "nowrap",
-    }}>{children}</th>
-  )
-}
-
-function Td({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
-  return <td style={{ padding: "10px 12px", textAlign: align, color: "var(--c-fg)", whiteSpace: "nowrap" }}>{children}</td>
-}
-
-function TdMono({ children, align = "left", tone }: { children: React.ReactNode; align?: "left" | "right"; tone?: "green" | "red" }) {
-  const color = tone === "green" ? "var(--c-green-bright)" : tone === "red" ? "var(--c-red-bright)" : "var(--c-fg)"
-  return (
-    <td style={{
-      padding: "10px 12px",
-      textAlign: align,
-      fontFamily: "var(--font-mono)",
-      fontSize: 12,
-      color,
-      whiteSpace: "nowrap",
-    }}>{children}</td>
   )
 }
