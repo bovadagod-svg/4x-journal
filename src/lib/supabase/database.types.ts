@@ -55,6 +55,78 @@ export type Database = {
         }
         Relationships: []
       }
+      economic_events: {
+        Row: {
+          actual: string | null
+          created_at: string
+          currency: string
+          event: string
+          forecast: string | null
+          id: string
+          impact: string
+          previous: string | null
+          scheduled_at: string
+          source: string | null
+        }
+        Insert: {
+          actual?: string | null
+          created_at?: string
+          currency: string
+          event: string
+          forecast?: string | null
+          id?: string
+          impact: string
+          previous?: string | null
+          scheduled_at: string
+          source?: string | null
+        }
+        Update: {
+          actual?: string | null
+          created_at?: string
+          currency?: string
+          event?: string
+          forecast?: string | null
+          id?: string
+          impact?: string
+          previous?: string | null
+          scheduled_at?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
+      watchlist_pairs: {
+        Row: {
+          bias: string
+          created_at: string
+          id: string
+          pair: string
+          setup_note: string | null
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bias?: string
+          created_at?: string
+          id?: string
+          pair: string
+          setup_note?: string | null
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bias?: string
+          created_at?: string
+          id?: string
+          pair?: string
+          setup_note?: string | null
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       journal_entries: {
         Row: {
           account_id: string | null

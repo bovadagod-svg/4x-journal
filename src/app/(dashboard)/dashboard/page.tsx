@@ -5,6 +5,7 @@ import { PnLStrip } from "@/components/dashboard/pnl-strip"
 import { OpenPositions } from "@/components/dashboard/open-positions"
 import { JournalFeed } from "@/components/dashboard/journal-feed"
 import { RiskGauge } from "@/components/dashboard/risk-gauge"
+import { WatchlistWidget } from "@/components/dashboard/watchlist-widget"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 
 export default async function DashboardPage() {
@@ -27,7 +28,10 @@ export default async function DashboardPage() {
         <RiskGauge />
       </div>
 
-      <JournalFeed entries={recentEntries} trades={recentTrades} />
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 14 }}>
+        <JournalFeed entries={recentEntries} trades={recentTrades} />
+        <WatchlistWidget />
+      </div>
     </>
   )
 }
