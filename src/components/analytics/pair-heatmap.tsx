@@ -52,7 +52,7 @@ export function PairHeatmap({ pairs }: { pairs: PairPerformance[] }) {
                   padding: "10px 18px", textAlign: "right", fontSize: 12, fontWeight: 600,
                   color: tone === "green" ? "var(--c-green-bright)" : tone === "red" ? "var(--c-red-bright)" : "var(--c-fg)",
                 }}>
-                  {p.closedTrades > 0 ? formatUSD(p.pnl, { signed: true, max: 0 }) : "—"}
+                  {p.closedTrades > 0 ? formatUSD(p.pnl, { signed: true }) : "—"}
                 </td>
               </tr>
             )

@@ -72,8 +72,8 @@ export function AccountCard({ account, tradeCount, connection }: { account: Acco
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid var(--c-border)", borderBottom: "1px solid var(--c-border)" }}>
-          <Stat label="Balance" value={formatUSD(Number(account.balance), { max: 0 })} />
-          <Stat label="Equity" value={formatUSD(Number(account.equity), { max: 0 })} />
+          <Stat label="Balance" value={formatUSD(Number(account.balance))} />
+          <Stat label="Equity" value={formatUSD(Number(account.equity))} />
         </div>
 
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

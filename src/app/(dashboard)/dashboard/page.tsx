@@ -6,6 +6,7 @@ import { OpenPositions } from "@/components/dashboard/open-positions"
 import { JournalFeed } from "@/components/dashboard/journal-feed"
 import { RiskGauge } from "@/components/dashboard/risk-gauge"
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget"
+import { RecentTrades } from "@/components/dashboard/recent-trades"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 
 export default async function DashboardPage() {
@@ -27,6 +28,8 @@ export default async function DashboardPage() {
         <OpenPositions trades={openTrades} />
         <RiskGauge />
       </div>
+
+      <RecentTrades trades={recentTrades} />
 
       <div className="grid-2-1">
         <JournalFeed entries={recentEntries} trades={recentTrades} />

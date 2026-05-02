@@ -27,10 +27,15 @@ export function computePnL(args: {
   return Number((move * size).toFixed(2))
 }
 
-export function formatUSD(n: number, opts: { signed?: boolean; max?: number } = {}) {
-  const { signed = false, max = 2 } = opts
+export function formatUSD(n: number, opts: { signed?: boolean; max?: number; min?: number } = {}) {
+  const { signed = false, max = 2, min = 2 } = opts
   const sign = signed && n > 0 ? "+" : ""
-  return `${sign}${n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: max })}`
+  return `${sign}${n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: min,
+    maximumFractionDigits: max,
+  })}`
 }
 
 export const COMMON_PAIRS = [

@@ -155,7 +155,7 @@ export default async function MonthlyReport({
                         {t.r != null ? `${Number(t.r) > 0 ? "+" : ""}${t.r}R` : "—"}
                       </Td>
                       <Td align="right" mono tone={Number(t.pnl) > 0 ? "green" : Number(t.pnl) < 0 ? "red" : undefined}>
-                        {t.pnl != null ? formatUSD(Number(t.pnl), { signed: true, max: 0 }) : "—"}
+                        {t.pnl != null ? formatUSD(Number(t.pnl), { signed: true }) : "—"}
                       </Td>
                       <Td>{t.status}</Td>
                     </tr>

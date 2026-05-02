@@ -67,7 +67,7 @@ export function AccountSwitcher() {
         <div style={{ minWidth: 0, textAlign: "left" }}>
           <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
           <div className="tnum" style={{ fontSize: 10.5, color: "var(--c-fg-muted)", fontFamily: "var(--font-mono)", lineHeight: 1.2, marginTop: 1 }}>
-            {formatUSD(subEquity, { max: 0 })}
+            {formatUSD(subEquity)}
           </div>
         </div>
         <Icon name={open ? "chevronUp" : "chevronDown"} size={12} color="var(--c-fg-muted)" />
@@ -168,7 +168,7 @@ function Row({
         }}>{label}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
           <span className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--c-fg-muted)" }}>
-            {formatUSD(equity, { max: 0 })}
+            {formatUSD(equity)}
           </span>
           <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }}>{sublabel}</span>
         </div>

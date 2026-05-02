@@ -52,10 +52,10 @@ export async function RiskGauge() {
         <>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 600, color: barColor }}>
-              {formatUSD(usage.dailyLossUsedUsd, { max: 0 })}
+              {formatUSD(usage.dailyLossUsedUsd)}
             </span>
             <span style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>
-              of {formatUSD(usage.dailyLossLimitUsd!, { max: 0 })} limit · {Math.round(pct)}% used
+              of {formatUSD(usage.dailyLossLimitUsd!)} limit · {Math.round(pct)}% used
             </span>
           </div>
 
