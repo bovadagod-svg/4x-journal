@@ -209,8 +209,12 @@ export function PlaybookDrawer({
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 500 }}>{t.pair} · {t.side.toUpperCase()}</div>
                           <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)" }} className="mono">
-                            {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ·{" "}
-                            {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                            {t.opened_at ? (
+                              <>
+                                {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ·{" "}
+                                {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                              </>
+                            ) : "Pending"}
                           </div>
                         </div>
                         <span className="tnum" style={{ fontSize: 11, color: "var(--c-fg-muted)" }}>{t.r != null ? `${r > 0 ? "+" : ""}${r.toFixed(2)}R` : ""}</span>

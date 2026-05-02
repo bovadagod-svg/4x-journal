@@ -49,8 +49,8 @@ export function LedgerView({
         if (result !== filters.result) return false
       }
       if (filters.date) {
-        const day = (t.closed_at ?? t.opened_at).slice(0, 10)
-        if (day !== filters.date) return false
+        const ref = t.closed_at ?? t.opened_at ?? t.created_at
+        if (!ref || ref.slice(0, 10) !== filters.date) return false
       }
       return true
     })

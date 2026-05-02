@@ -31,7 +31,7 @@ export function LogTradeModal({
 
   // Local UI state for fields the action just reads off the form
   const [side, setSide] = useState<"long" | "short">("long")
-  const [status, setStatus] = useState<"open" | "closed">("open")
+  const [status, setStatus] = useState<"pending" | "open" | "closed">("open")
   const [pair, setPair] = useState("EUR/USD")
   const [entry, setEntry] = useState("")
   const [stop, setStop] = useState("")
@@ -116,8 +116,14 @@ export function LogTradeModal({
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--c-border)" }}>
           <div>
-            <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600 }}>Log a trade</h2>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--c-fg-muted)" }}>Pair, side, prices, size — you can edit later from the Ledger.</p>
+            <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600 }}>
+              {status === "pending" ? "Place a pending order" : status === "closed" ? "Log a closed trade" : "Log a trade"}
+            </h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--c-fg-muted)" }}>
+              {status === "pending"
+                ? "Limit/stop order at this price. We'll mark it filled when it executes."
+                : "Pair, side, prices, size — you can edit later from the Ledger."}
+            </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" style={iconBtn}>
             <Icon name="x" size={16} />
@@ -139,7 +145,11 @@ export function LogTradeModal({
               <Segment
                 value={status}
                 onChange={(v) => setStatus(v)}
-                options={[{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }]}
+                options={[
+                  { value: "pending", label: "Pending" },
+                  { value: "open", label: "Open" },
+                  { value: "closed", label: "Closed" },
+                ]}
               />
               <input type="hidden" name="status" value={status} />
             </Field>
@@ -177,7 +187,7 @@ export function LogTradeModal({
 
           {/* Prices */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <Field label="Entry">
+            <Field label={status === "pending" ? "Limit / stop price" : "Entry"}>
               <input name="entry_price" value={entry} onChange={(e) => setEntry(e.target.value)} type="number" step="any" required placeholder="1.08412" style={priceInput} />
               {state && !state.ok && state.fieldErrors?.entry_price && <FieldError msg={state.fieldErrors.entry_price[0]} />}
             </Field>
@@ -279,7 +289,7 @@ export function LogTradeModal({
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={pending}>
             <Icon name="plus" size={13} />
-            <span>{pending ? "Saving…" : "Log trade"}</span>
+            <span>{pending ? "Saving…" : status === "pending" ? "Place order" : "Log trade"}</span>
           </button>
         </div>
       </form>

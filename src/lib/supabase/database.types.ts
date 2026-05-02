@@ -363,9 +363,64 @@ export type Database = {
           { foreignKeyName: "risk_rules_account_id_fkey"; columns: ["account_id"]; isOneToOne: true; referencedRelation: "accounts"; referencedColumns: ["id"] }
         ]
       }
+      trade_fills: {
+        Row: {
+          created_at: string
+          external_id: string | null
+          external_provider: string | null
+          filled_at: string
+          id: string
+          kind: string
+          notes: string | null
+          pnl_contribution: number | null
+          price: number
+          r_realized: number | null
+          reason: string | null
+          size: number
+          trade_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_id?: string | null
+          external_provider?: string | null
+          filled_at?: string
+          id?: string
+          kind: string
+          notes?: string | null
+          pnl_contribution?: number | null
+          price: number
+          r_realized?: number | null
+          reason?: string | null
+          size: number
+          trade_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          external_id?: string | null
+          external_provider?: string | null
+          filled_at?: string
+          id?: string
+          kind?: string
+          notes?: string | null
+          pnl_contribution?: number | null
+          price?: number
+          r_realized?: number | null
+          reason?: string | null
+          size?: number
+          trade_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          { foreignKeyName: "trade_fills_trade_id_fkey"; columns: ["trade_id"]; isOneToOne: false; referencedRelation: "trades"; referencedColumns: ["id"] }
+        ]
+      }
       trades: {
         Row: {
           account_id: string
+          cancel_reason: string | null
+          cancelled_at: string | null
           closed_at: string | null
           created_at: string
           entry_price: number
@@ -375,7 +430,7 @@ export type Database = {
           id: string
           mood: string | null
           notes: string | null
-          opened_at: string
+          opened_at: string | null
           pair: string
           playbook_id: string | null
           pnl: number | null
@@ -392,6 +447,8 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           closed_at?: string | null
           created_at?: string
           entry_price: number
@@ -401,7 +458,7 @@ export type Database = {
           id?: string
           mood?: string | null
           notes?: string | null
-          opened_at?: string
+          opened_at?: string | null
           pair: string
           playbook_id?: string | null
           pnl?: number | null
@@ -418,6 +475,8 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           closed_at?: string | null
           created_at?: string
           entry_price?: number
@@ -427,7 +486,7 @@ export type Database = {
           id?: string
           mood?: string | null
           notes?: string | null
-          opened_at?: string
+          opened_at?: string | null
           pair?: string
           playbook_id?: string | null
           pnl?: number | null
@@ -598,7 +657,12 @@ export type Database = {
       }
     }
     Views: { [_ in never]: never }
-    Functions: { [_ in never]: never }
+    Functions: {
+      recompute_trade_aggregates: {
+        Args: { p_trade_id: string }
+        Returns: undefined
+      }
+    }
     Enums: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }
   }

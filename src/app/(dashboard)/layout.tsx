@@ -8,6 +8,7 @@ import { TWEAK_DEFAULTS, type Tweaks } from "@/lib/tweaks/types"
 import { LogTradeProvider, type TradeDefaults } from "@/components/trades/log-trade-context"
 import { AccountsProvider } from "@/components/accounts/accounts-context"
 import { JournalDrawerProvider } from "@/components/journal/journal-drawer-context"
+import { TradeDetailDrawerProvider } from "@/components/trades/trade-detail-drawer-context"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
 
 export default async function DashboardLayout({
@@ -53,14 +54,16 @@ export default async function DashboardLayout({
       <AccountsProvider accounts={accounts}>
         <LogTradeProvider playbooks={playbooks} defaults={tradeDefaults}>
           <JournalDrawerProvider>
-            <div className="app">
-              <Sidebar userEmail={user.email ?? null} />
-              <div className="main">
-                <TopBar />
-                <div className="content">{children}</div>
+            <TradeDetailDrawerProvider>
+              <div className="app">
+                <Sidebar userEmail={user.email ?? null} />
+                <div className="main">
+                  <TopBar />
+                  <div className="content">{children}</div>
+                </div>
               </div>
-            </div>
-            <TweaksPanel />
+              <TweaksPanel />
+            </TradeDetailDrawerProvider>
           </JournalDrawerProvider>
         </LogTradeProvider>
       </AccountsProvider>

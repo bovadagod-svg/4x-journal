@@ -194,7 +194,13 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
     }
   }
 
-  // Upsert trades. external_id is unique per (account_id, external_provider, external_id).
+  // Upsert trades + fills. Strategy:
+  //   1. Upsert parent rows (existing behavior, dedup on external_id)
+  //   2. Fetch back the resulting trade IDs
+  //   3. Idempotently insert one entry fill (and one exit fill if closed)
+  //      using `${externalId}:entry` and `${externalId}:exit` as fill external_ids
+  //      so re-syncs don't create duplicate fills.
+  //   4. Trigger recomputes parent aggregates from fills.
   const all = [...pull.open, ...pull.closed]
   const rows = all.map((p) => ({
     user_id: user.id,
@@ -206,12 +212,8 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
     entry_price: p.entryPrice,
     stop_price: p.stopPrice,
     target_price: p.targetPrice,
-    exit_price: p.exitPrice,
     size: p.size,
-    pnl: p.pnl ?? (p.exitPrice != null ? computePnL({ side: p.side, entry: p.entryPrice, exit: p.exitPrice, size: p.size }) : null),
     status: p.status,
-    opened_at: p.openedAt,
-    closed_at: p.closedAt,
     notes: `Synced from TradeLocker (${env}).`,
     tags: ["tradelocker"],
   }))
@@ -226,6 +228,73 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
       return { ok: false, error: upErr.message }
     }
     upserted = count ?? rows.length
+
+    // Fetch the trade IDs we just upserted so we can attach fills.
+    const externalIds = rows.map((r) => r.external_id)
+    const { data: tradeRows } = await supabase
+      .from("trades")
+      .select("id, external_id")
+      .eq("account_id", conn.account_id)
+      .eq("external_provider", "tradelocker")
+      .in("external_id", externalIds)
+    const tradeByExternal = new Map<string, string>()
+    ;(tradeRows ?? []).forEach((t) => { if (t.external_id) tradeByExternal.set(t.external_id, t.id) })
+
+    type FillInsert = {
+      trade_id: string
+      user_id: string
+      kind: "entry" | "exit"
+      reason: "broker_sync"
+      price: number
+      size: number
+      filled_at: string
+      external_provider: "tradelocker"
+      external_id: string
+    }
+    const fills: FillInsert[] = []
+    for (const p of all) {
+      const tradeId = tradeByExternal.get(p.externalId)
+      if (!tradeId) continue
+      // Entry fill — always present once the parent trade is open or closed.
+      if (p.openedAt) {
+        fills.push({
+          trade_id: tradeId,
+          user_id: user.id,
+          kind: "entry",
+          reason: "broker_sync",
+          price: p.entryPrice,
+          size: p.size,
+          filled_at: p.openedAt,
+          external_provider: "tradelocker",
+          external_id: `${p.externalId}:entry`,
+        })
+      }
+      // Exit fill — only for closed trades.
+      if (p.status === "closed" && p.exitPrice != null && p.closedAt) {
+        fills.push({
+          trade_id: tradeId,
+          user_id: user.id,
+          kind: "exit",
+          reason: "broker_sync",
+          price: p.exitPrice,
+          size: p.size,
+          filled_at: p.closedAt,
+          external_provider: "tradelocker",
+          external_id: `${p.externalId}:exit`,
+        })
+      }
+    }
+
+    if (fills.length > 0) {
+      // Upsert by external_provider+external_id so re-syncs are idempotent.
+      const { error: fillErr } = await supabase
+        .from("trade_fills")
+        .upsert(fills, { onConflict: "external_provider,external_id" })
+      if (fillErr) {
+        await markError(supabase, connectionId, `Trades synced but fills failed: ${fillErr.message}`)
+        return { ok: false, error: fillErr.message }
+      }
+    }
   }
 
   await supabase

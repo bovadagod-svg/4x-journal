@@ -583,8 +583,14 @@ function LinkedTradeCard({ trade, playbookMap }: { trade: Trade; playbookMap: Ma
           </span>
         </div>
         <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }} className="mono">
-          {new Date(trade.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ·{" "}
-          {new Date(trade.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · {Number(trade.size).toLocaleString()} units
+          {trade.opened_at ? (
+            <>
+              {new Date(trade.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ·{" "}
+              {new Date(trade.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · {Number(trade.size).toLocaleString()} units
+            </>
+          ) : (
+            <>Pending · {Number(trade.size).toLocaleString()} units</>
+          )}
         </div>
       </div>
       {trade.pnl != null && (

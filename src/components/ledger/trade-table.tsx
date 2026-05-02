@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from "react"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
+import { useTradeDetailDrawer } from "@/components/trades/trade-detail-drawer-context"
 import { TradeRowActions } from "@/components/trades/trade-row-actions"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 
@@ -52,6 +53,7 @@ export function TradeTable({
   const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" }>({ col: "opened_at", dir: "desc" })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState<string | null>(null)
+  const tradeDrawer = useTradeDetailDrawer()
 
   const sorted = useMemo(() => {
     const dir = sort.dir === "asc" ? 1 : -1
@@ -153,7 +155,7 @@ export function TradeTable({
                       background: isSel ? "var(--c-purple-soft)" : isExp ? "var(--c-bg-elev-2)" : "transparent",
                       cursor: "pointer",
                     }}
-                    onClick={() => setExpanded(isExp ? null : t.id)}
+                    onClick={() => tradeDrawer.openTrade(t.id)}
                   >
                     <td style={{ padding: "11px 16px" }}>
                       <input
@@ -165,12 +167,23 @@ export function TradeTable({
                       />
                     </td>
                     <td style={{ padding: "11px 12px" }}>
-                      <div style={{ fontWeight: 500 }}>
-                        {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }} className="mono">
-                        {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                      </div>
+                      {t.opened_at ? (
+                        <>
+                          <div style={{ fontWeight: 500 }}>
+                            {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }} className="mono">
+                            {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 500, color: "var(--c-amber)" }}>Pending</div>
+                          <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }} className="mono">
+                            placed {new Date(t.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </div>
+                        </>
+                      )}
                     </td>
                     <td style={{ padding: "11px 12px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
@@ -269,7 +282,7 @@ export function TradeTable({
 
 function sortField(t: ColumnEnriched, key: SortKey): string | number {
   switch (key) {
-    case "opened_at": return new Date(t.opened_at).getTime()
+    case "opened_at": return t.opened_at ? new Date(t.opened_at).getTime() : new Date(t.created_at).getTime()
     case "pair": return t.pair
     case "side": return t.side
     case "setup": return t.setupName ?? ""

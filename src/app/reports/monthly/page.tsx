@@ -36,6 +36,7 @@ export default async function MonthlyReport({
   ])
 
   const trades = allTrades.filter((t) => {
+    if (!t.opened_at) return false
     const at = new Date(t.opened_at)
     return at >= start && at < end
   })
@@ -144,7 +145,7 @@ export default async function MonthlyReport({
                   return (
                     <tr key={t.id} style={{ borderTop: "1px solid var(--c-border)" }}>
                       <Td>
-                        {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {t.opened_at ? new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
                       </Td>
                       <Td>{acc ? acc.label : ""}</Td>
                       <Td><span className="mono">{t.pair}</span></Td>
