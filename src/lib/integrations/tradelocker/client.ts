@@ -192,67 +192,198 @@ function pickArray(body: unknown): unknown[] {
 
 /**
  * Pull positions + recent order history for a single TradeLocker account.
- * The route headers TL expects (`accNum`, etc.) are sent best-effort.
+ *
+ * TradeLocker uses column-oriented responses: each row is a positional
+ * array, and `/trade/config` defines the column order per resource
+ * (positionsConfig.columns, ordersHistoryConfig.columns). We fetch config
+ * first, then zip rows → objects, then normalize.
+ *
+ * Reference:
+ * https://public-api.tradelocker.com/reference/getpositions
+ * https://public-api.tradelocker.com/reference/getordershistory
+ * https://public-api.tradelocker.com/reference/getconfigusingget
  */
 export async function tlSyncTrades(args: {
   env: TradeLockerEnv
   accessToken: string
   accountId: string
   accNum: string
-}): Promise<{ open: TLPosition[]; closed: TLPosition[]; rawSamples: { positions?: unknown; history?: unknown } }> {
+}): Promise<{
+  open: TLPosition[]
+  closed: TLPosition[]
+  attempts: Array<{ kind: "config" | "positions" | "history" | "state"; path: string; ok: boolean; status?: number; sample?: unknown; error?: string }>
+  state?: unknown
+}> {
   const base = TL_BASE_URL[args.env]
-  const headers = {
+  const baseHeaders = {
     Authorization: `Bearer ${args.accessToken}`,
     accNum: args.accNum,
     "acc-num": args.accNum,
   }
 
-  const [positionsRes, historyRes] = await Promise.allSettled([
-    tlFetch(base, `/trade/accounts/${args.accountId}/positions`, { headers }),
-    tlFetch(base, `/trade/accounts/${args.accountId}/ordersHistory`, { headers }),
-  ])
+  const attempts: Array<{ kind: "config" | "positions" | "history" | "state"; path: string; ok: boolean; status?: number; sample?: unknown; error?: string }> = []
 
-  const positionsBody = positionsRes.status === "fulfilled" ? positionsRes.value.body : null
-  const historyBody = historyRes.status === "fulfilled" ? historyRes.value.body : null
+  // 1) Fetch config to learn column order. Without it, we can't decode rows.
+  let positionColumns: string[] = []
+  let historyColumns: string[] = []
+  try {
+    const r = await tlFetch(base, "/trade/config", { headers: baseHeaders })
+    attempts.push({ kind: "config", path: "/trade/config", ok: true, status: r.status, sample: trim(r.body) })
+    positionColumns = extractColumns(r.body, ["positionsConfig", "positions"])
+    historyColumns = extractColumns(r.body, ["ordersHistoryConfig", "ordersHistory", "orderHistory"])
+  } catch (e) {
+    const err = e instanceof TLError ? e : null
+    attempts.push({ kind: "config", path: "/trade/config", ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
+  }
 
-  const open = normalizePositions(positionsBody, "open")
-  const closed = normalizePositions(historyBody, "closed")
+  // 2) Open positions.
+  let openObjects: Array<Record<string, unknown>> = []
+  try {
+    const r = await tlFetch(base, `/trade/accounts/${args.accountId}/positions`, { headers: baseHeaders })
+    attempts.push({ kind: "positions", path: `/trade/accounts/${args.accountId}/positions`, ok: true, status: r.status, sample: trim(r.body) })
+    openObjects = decodeRows(r.body, positionColumns)
+  } catch (e) {
+    const err = e instanceof TLError ? e : null
+    attempts.push({ kind: "positions", path: `/trade/accounts/${args.accountId}/positions`, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
+  }
 
-  // Surface the first error if both paths failed completely.
-  if (positionsRes.status === "rejected" && historyRes.status === "rejected") {
-    throw positionsRes.reason
+  // 3) Closed orders.
+  let closedObjects: Array<Record<string, unknown>> = []
+  try {
+    const r = await tlFetch(base, `/trade/accounts/${args.accountId}/ordersHistory`, { headers: baseHeaders })
+    attempts.push({ kind: "history", path: `/trade/accounts/${args.accountId}/ordersHistory`, ok: true, status: r.status, sample: trim(r.body) })
+    closedObjects = decodeRows(r.body, historyColumns)
+  } catch (e) {
+    const err = e instanceof TLError ? e : null
+    attempts.push({ kind: "history", path: `/trade/accounts/${args.accountId}/ordersHistory`, ok: false, status: err?.status, sample: trim(err?.body), error: err?.message ?? String(e) })
+  }
+
+  // 4) Account state for balance/equity (best-effort, not blocking).
+  let state: unknown = undefined
+  try {
+    const r = await tlFetch(base, `/trade/accounts/${args.accountId}/state`, { headers: baseHeaders })
+    attempts.push({ kind: "state", path: `/trade/accounts/${args.accountId}/state`, ok: true, status: r.status, sample: trim(r.body) })
+    state = r.body
+  } catch (e) {
+    const err = e instanceof TLError ? e : null
+    attempts.push({ kind: "state", path: `/trade/accounts/${args.accountId}/state`, ok: false, status: err?.status, error: err?.message ?? String(e) })
   }
 
   return {
-    open,
-    closed,
-    rawSamples: { positions: positionsBody, history: historyBody },
+    open: openObjects.map((o) => objectToPosition(o, "open")).filter(isValid),
+    closed: closedObjects.map((o) => objectToPosition(o, "closed")).filter(isValid),
+    attempts,
+    state,
   }
 }
 
-function normalizePositions(body: unknown, status: "open" | "closed"): TLPosition[] {
+/**
+ * Pull a string[] of column names out of /trade/config for a given resource.
+ * The config response can be shaped a few ways depending on TL's version:
+ *   { d: { positionsConfig: { columns: [{ id: "id", title: "Position ID" }, ...] } } }
+ *   { positionsConfig: [{ id: "id" }, ...] }
+ *   { positionsConfig: { fields: [{ name: "id" }] } }
+ */
+function extractColumns(body: unknown, keys: string[]): string[] {
+  const root = body && typeof body === "object" && "d" in body ? (body as { d: unknown }).d : body
+  if (!root || typeof root !== "object") return []
+  const r = root as Record<string, unknown>
+  for (const key of keys) {
+    const cfg = r[key]
+    if (!cfg) continue
+    const cols = pickArray(cfg).length > 0 ? pickArray(cfg) : (() => {
+      if (typeof cfg !== "object" || cfg == null) return [] as unknown[]
+      const o = cfg as Record<string, unknown>
+      if (Array.isArray(o.columns)) return o.columns as unknown[]
+      if (Array.isArray(o.fields)) return o.fields as unknown[]
+      return [] as unknown[]
+    })()
+    if (cols.length === 0) continue
+    return cols.map((c) => {
+      if (typeof c === "string") return c
+      if (c && typeof c === "object") {
+        const x = c as Record<string, unknown>
+        return String(x.id ?? x.name ?? x.field ?? x.key ?? "")
+      }
+      return ""
+    }).filter(Boolean)
+  }
+  return []
+}
+
+/**
+ * Take a TL response (which can be a flat array of objects, an array of
+ * positional arrays, or wrapped in { d: { positions: [...] } }) and return
+ * an array of plain objects keyed by `columns` for positional rows.
+ */
+function decodeRows(body: unknown, columns: string[]): Array<Record<string, unknown>> {
   const list = pickArray(body)
-  return list.map((raw) => {
-    const r = raw as Record<string, unknown>
-    const side = inferSide(r)
-    const entry = num(r.openPrice ?? r.entryPrice ?? r.price ?? r.avgPrice)
-    const exit = num(r.closePrice ?? r.exitPrice ?? null)
-    return {
-      externalId: String(r.id ?? r.positionId ?? r.orderId ?? r.ticket ?? ""),
-      pair: prettyPair(String(r.symbol ?? r.instrument ?? r.tradableInstrumentName ?? r.pair ?? "")),
-      side,
-      size: num(r.qty ?? r.quantity ?? r.size ?? r.volume) ?? 0,
-      entryPrice: entry ?? 0,
-      stopPrice: num(r.stopLoss ?? r.sl ?? null),
-      targetPrice: num(r.takeProfit ?? r.tp ?? null),
-      exitPrice: exit,
-      pnl: num(r.pnl ?? r.profit ?? r.realizedPnL ?? null),
-      status,
-      openedAt: String(r.openTime ?? r.openedAt ?? r.createdAt ?? new Date().toISOString()),
-      closedAt: status === "closed" ? String(r.closeTime ?? r.closedAt ?? null) : null,
-      raw,
-    }
-  }).filter((p) => p.externalId && p.pair && p.entryPrice > 0)
+  if (list.length === 0) return []
+
+  // Already objects? Use as-is.
+  if (list.every((row) => row != null && typeof row === "object" && !Array.isArray(row))) {
+    return list as Array<Record<string, unknown>>
+  }
+
+  // Positional arrays — zip with columns.
+  if (columns.length > 0 && list.every((row) => Array.isArray(row))) {
+    return (list as unknown[][]).map((row) => {
+      const obj: Record<string, unknown> = {}
+      columns.forEach((col, i) => { obj[col] = row[i] })
+      return obj
+    })
+  }
+
+  // Mixed/unknown shape — return empty so we don't pretend to have data.
+  return []
+}
+
+function objectToPosition(r: Record<string, unknown>, status: "open" | "closed"): TLPosition {
+  const side = inferSide(r)
+  const entry = num(r.openPrice ?? r.entryPrice ?? r.price ?? r.avgPrice ?? r.openAvgPrice)
+  const exit = num(r.closePrice ?? r.exitPrice ?? r.closeAvgPrice ?? null)
+  const idCandidate = r.id ?? r.positionId ?? r.orderId ?? r.ticket ?? r.tradeId
+  return {
+    externalId: idCandidate != null ? String(idCandidate) : "",
+    pair: prettyPair(String(r.symbol ?? r.instrument ?? r.tradableInstrumentName ?? r.pair ?? r.instrumentName ?? "")),
+    side,
+    size: num(r.qty ?? r.quantity ?? r.size ?? r.volume ?? r.lots) ?? 0,
+    entryPrice: entry ?? 0,
+    stopPrice: num(r.stopLoss ?? r.sl ?? r.stopPrice),
+    targetPrice: num(r.takeProfit ?? r.tp ?? r.targetPrice),
+    exitPrice: exit,
+    pnl: num(r.pnl ?? r.profit ?? r.realizedPnL ?? r.netPnL ?? r.profitLoss),
+    status,
+    openedAt: tlTimestamp(r.openTime ?? r.openedAt ?? r.createdAt ?? r.openTimestamp ?? r.timestamp) ?? new Date().toISOString(),
+    closedAt: status === "closed" ? tlTimestamp(r.closeTime ?? r.closedAt ?? r.closeTimestamp ?? r.lastUpdateTimestamp) : null,
+    raw: r,
+  }
+}
+
+function isValid(p: TLPosition): boolean {
+  return Boolean(p.externalId) && Boolean(p.pair) && p.entryPrice > 0
+}
+
+/** TL timestamps come as either ISO strings or Unix milliseconds. */
+function tlTimestamp(v: unknown): string | null {
+  if (v == null || v === "") return null
+  if (typeof v === "string") {
+    if (/^\d+$/.test(v)) return new Date(Number(v)).toISOString()
+    return v
+  }
+  if (typeof v === "number") return new Date(v).toISOString()
+  return null
+}
+
+// Truncate large bodies so we don't blow up DB rows when storing samples.
+function trim(body: unknown): unknown {
+  try {
+    const json = JSON.stringify(body)
+    if (json.length <= 4000) return body
+    return { _truncated: true, preview: json.slice(0, 4000) }
+  } catch {
+    return body
+  }
 }
 
 function inferSide(r: Record<string, unknown>): "long" | "short" {

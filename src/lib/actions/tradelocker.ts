@@ -81,12 +81,13 @@ export async function connectTradeLocker(
     if (existing) {
       accountRowId = existing.account_id
     } else {
+      const friendlyLabel = prettyTLLabel({ name: tl.name, accountId: tl.id, accNum: tl.accNum })
       const { data: newAcc, error: accErr } = await supabase
         .from("accounts")
         .insert({
           user_id: user.id,
           broker: "TradeLocker",
-          label: tl.name ?? `TradeLocker ${tl.id}`,
+          label: friendlyLabel,
           currency: tl.currency ?? "USD",
           status: env === "live" ? "live" : "demo",
           color: env === "live" ? "#11C458" : "#6932D4",
@@ -125,7 +126,7 @@ export async function connectTradeLocker(
   return { ok: true, createdAccounts: created, connectionIds }
 }
 
-export async function syncTradeLockerConnection(connectionId: string): Promise<{ ok: boolean; error?: string; tradesUpserted?: number; debug?: unknown }> {
+export async function syncTradeLockerConnection(connectionId: string): Promise<{ ok: boolean; error?: string; tradesUpserted?: number; attempts?: unknown; debug?: unknown }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: "Not signed in." }
@@ -169,6 +170,19 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
     await markError(supabase, connectionId, errMsg(e))
     return { ok: false, error: errMsg(e), debug: errDebug(e) }
   }
+
+  // Stash the latest API attempts (truncated) so we can inspect when 0
+  // trades come back even though sync "succeeded".
+  // JSON.parse(JSON.stringify(...)) coerces unknowns to Supabase's Json type.
+  const debugMeta = JSON.parse(JSON.stringify({
+    ...(typeof conn.external_account_meta === "object" && conn.external_account_meta ? conn.external_account_meta : {}),
+    lastSyncAttempts: pull.attempts,
+    lastSyncAt: new Date().toISOString(),
+  }))
+  await supabase
+    .from("broker_connections")
+    .update({ external_account_meta: debugMeta })
+    .eq("id", connectionId)
 
   // Upsert trades. external_id is unique per (account_id, external_provider, external_id).
   const all = [...pull.open, ...pull.closed]
@@ -218,7 +232,7 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
   revalidatePath("/accounts")
   revalidatePath("/dashboard")
   revalidatePath("/ledger")
-  return { ok: true, tradesUpserted: upserted }
+  return { ok: true, tradesUpserted: upserted, attempts: pull.attempts }
 }
 
 export async function disconnectTradeLockerConnection(connectionId: string, opts: { deleteTrades?: boolean } = {}) {
@@ -265,4 +279,15 @@ function errMsg(e: unknown): string {
 function errDebug(e: unknown): unknown {
   if (e instanceof TLError) return { url: e.url, status: e.status, body: e.body }
   return null
+}
+
+/**
+ * TradeLocker name fields look like "FPR#<loginUuid>#<accNum>#<accNum>".
+ * Distill that to "TradeLocker · accNum 8" or similar.
+ */
+function prettyTLLabel(args: { name?: string; accountId: string; accNum: string }): string {
+  if (args.name && !args.name.includes("#")) return args.name
+  if (args.accNum) return `TradeLocker · acc #${args.accNum}`
+  if (args.accountId) return `TradeLocker · ${args.accountId}`
+  return "TradeLocker"
 }

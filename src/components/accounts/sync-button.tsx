@@ -14,14 +14,17 @@ export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, 
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [result, setResult] = useState<{ kind: "ok"; n: number } | { kind: "err"; msg: string; debug?: unknown } | null>(null)
+  const [result, setResult] = useState<{ kind: "ok"; n: number; debug?: unknown } | { kind: "err"; msg: string; debug?: unknown } | null>(null)
 
   const onSync = () => {
     setResult(null)
     startTransition(async () => {
       const r = await syncTradeLockerConnection(connectionId)
-      if (r.ok) setResult({ kind: "ok", n: r.tradesUpserted ?? 0 })
-      else setResult({ kind: "err", msg: r.error ?? "Sync failed.", debug: r.debug })
+      if (r.ok) {
+        setResult({ kind: "ok", n: r.tradesUpserted ?? 0, debug: (r.tradesUpserted ?? 0) === 0 ? r.attempts : undefined })
+      } else {
+        setResult({ kind: "err", msg: r.error ?? "Sync failed.", debug: r.debug })
+      }
       router.refresh()
     })
   }
@@ -78,8 +81,18 @@ export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, 
       </div>
 
       {result?.kind === "ok" && (
-        <div style={{ fontSize: 11, color: "var(--c-green-bright)" }}>
-          ✓ {result.n} trade{result.n === 1 ? "" : "s"} upserted.
+        <div style={{ fontSize: 11, color: result.n > 0 ? "var(--c-green-bright)" : "var(--c-amber)" }}>
+          {result.n > 0
+            ? `✓ ${result.n} trade${result.n === 1 ? "" : "s"} upserted.`
+            : "Sync ran but no trades found. Either the account is empty or the API path is wrong — see Raw API response below."}
+          {result.debug != null && (
+            <details style={{ marginTop: 4 }}>
+              <summary style={{ cursor: "pointer", color: "var(--c-fg-muted)" }}>Raw API response (paste this back to debug)</summary>
+              <pre style={{ margin: "4px 0 0", fontSize: 10, fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 320, overflow: "auto", color: "var(--c-fg)" }}>
+                {JSON.stringify(result.debug, null, 2)}
+              </pre>
+            </details>
+          )}
         </div>
       )}
       {result?.kind === "err" && (
