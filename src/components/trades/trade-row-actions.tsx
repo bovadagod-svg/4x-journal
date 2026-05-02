@@ -4,8 +4,10 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@/components/icons"
 import { closeTrade, deleteTrade } from "@/lib/actions/trades"
+import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 
 export function TradeRowActions({ tradeId, status }: { tradeId: string; status: string }) {
+  const { openForTrade } = useJournalDrawer()
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [closing, setClosing] = useState(false)
@@ -66,6 +68,9 @@ export function TradeRowActions({ tradeId, status }: { tradeId: string; status: 
 
   return (
     <div style={{ display: "flex", gap: 4 }}>
+      <button onClick={() => openForTrade(tradeId)} title="Open journal entry" style={miniBtn}>
+        <Icon name="journal" size={12} />
+      </button>
       {status === "open" && (
         <button onClick={() => setClosing(true)} title="Close trade" style={miniBtn}>
           <Icon name="check" size={12} />

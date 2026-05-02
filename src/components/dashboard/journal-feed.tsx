@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Icon, PairFlag } from "@/components/icons"
 import type { JournalEntry, Trade } from "@/lib/queries/trades"
 import { formatUSD } from "@/lib/finance"
+import { OpenEntryRowWrapper } from "@/components/journal/open-entry-buttons"
 
 /**
  * Recent journal entries with the prototype's icon-square row layout.
@@ -53,8 +54,8 @@ export function JournalFeed({ entries, trades }: { entries: JournalEntry[]; trad
             const time = new Date(e.created_at).toLocaleString("en-US", { hour: "numeric", minute: "2-digit" })
 
             return (
+              <OpenEntryRowWrapper key={e.id} entryId={e.id}>
               <div
-                key={e.id}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -103,6 +104,7 @@ export function JournalFeed({ entries, trades }: { entries: JournalEntry[]; trad
                   </div>
                 )}
               </div>
+              </OpenEntryRowWrapper>
             )
           })}
         </div>

@@ -4,6 +4,7 @@ import { SECTION_META } from "@/lib/sections"
 import { Icon } from "@/components/icons"
 import { getJournalEntries, getUserTrades } from "@/lib/queries/trades"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
+import { OpenEntryRowWrapper } from "@/components/journal/open-entry-buttons"
 
 export default async function JournalPage() {
   const m = SECTION_META.journal
@@ -17,7 +18,7 @@ export default async function JournalPage() {
         <SectionStub
           icon={m.icon}
           title="No journal entries yet"
-          description="Notes you write in the Log Trade modal land here automatically. The dedicated 6-tab journal editor (pre/during/post/cold review/screenshots/tags) lands in Phase 1.5."
+          description="Notes you write in the Log Trade modal land here automatically. Click any trade in the Ledger (or the journal icon in the row actions) to open the 6-tab editor — pre-trade, live notes, post-trade, cold review, screenshots, tags."
         />
       </>
     )
@@ -31,7 +32,8 @@ export default async function JournalPage() {
         {entries.map((e) => {
           const t = e.trade_id ? tradeMap.get(e.trade_id) : undefined
           return (
-            <div key={e.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <OpenEntryRowWrapper key={e.id} entryId={e.id}>
+            <div className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -69,6 +71,7 @@ export default async function JournalPage() {
                 </div>
               )}
             </div>
+            </OpenEntryRowWrapper>
           )
         })}
       </div>
