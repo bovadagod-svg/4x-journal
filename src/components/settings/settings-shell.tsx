@@ -56,19 +56,30 @@ export function SettingsShell({
   const [tab, setTab] = useState<SettingsTabId>(defaultTab)
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 18, alignItems: "flex-start" }}>
-      <nav style={{
-        position: "sticky", top: 16,
+    <div className="settings-shell" style={{ display: "grid", gap: 18, alignItems: "flex-start" }}>
+      <style>{`
+        .settings-shell { grid-template-columns: 240px 1fr; }
+        .settings-shell-nav { position: sticky; top: 16px; }
+        @media (max-width: 720px) {
+          .settings-shell { grid-template-columns: 1fr; }
+          .settings-shell-nav { position: static; }
+          .settings-shell-nav-list { flex-direction: row !important; overflow-x: auto; padding: 4px !important; gap: 4px !important; }
+          .settings-shell-nav-list > [data-group] { display: none; }
+          .settings-shell-nav-list > button, .settings-shell-nav-list > a { white-space: nowrap; flex-shrink: 0; }
+        }
+      `}</style>
+      <nav className="settings-shell-nav" style={{
         display: "flex", flexDirection: "column", gap: 2,
         background: "var(--c-bg-elev-1)",
         border: "1px solid var(--c-border)",
         borderRadius: "var(--radius-lg)",
         padding: 8,
       }}>
+        <div className="settings-shell-nav-list" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {NAV.map((item, i) => {
           if ("group" in item) {
             return (
-              <div key={`g-${item.group}`} style={{
+              <div key={`g-${item.group}`} data-group style={{
                 fontSize: 10, color: "var(--c-fg-dim)",
                 textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600,
                 padding: i === 0 ? "4px 12px 6px" : "12px 12px 6px",
@@ -105,6 +116,7 @@ export function SettingsShell({
             </button>
           )
         })}
+        </div>
       </nav>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>

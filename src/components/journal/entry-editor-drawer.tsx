@@ -57,6 +57,7 @@ export function EntryEditorDrawer({
   const [mistakes, setMistakes] = useState<string[]>([])
   const [ruleBreak, setRuleBreak] = useState(false)
   const [ruleBreakTags, setRuleBreakTags] = useState<string[]>([])
+  const [isPublic, setIsPublic] = useState(false)
 
   // Live (during-trade) notes — server-managed, not autosaved
   const [during, setDuring] = useState<DuringNote[]>([])
@@ -91,6 +92,7 @@ export function EntryEditorDrawer({
       setMistakes(e.mistakes ?? [])
       setRuleBreak(!!e.rule_break)
       setRuleBreakTags(e.rule_break_tags ?? [])
+      setIsPublic(!!e.is_public)
       setDuring(Array.isArray(e.during_trade) ? (e.during_trade as DuringNote[]) : [])
       setShots(Array.isArray(e.screenshots) ? (e.screenshots as Screenshot[]) : [])
       setTab("pre")
@@ -100,8 +102,8 @@ export function EntryEditorDrawer({
 
   // Autosave debounced — fires when any of the autosaved fields change.
   const dirtyKey = useMemo(() => JSON.stringify({
-    title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags,
-  }), [title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags])
+    title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags, isPublic,
+  }), [title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags, isPublic])
 
   useEffect(() => {
     if (!entry) return
@@ -122,6 +124,7 @@ export function EntryEditorDrawer({
         mood,
         rule_break: ruleBreak,
         rule_break_tags: ruleBreakTags,
+        is_public: isPublic,
         tags,
         mistakes,
       })
@@ -375,6 +378,23 @@ export function EntryEditorDrawer({
                   />
                 </div>
               )}
+            </Field>
+            <Field
+              label="Share publicly"
+              hint="Makes this entry visible at /u/your-handle. Set your handle in Settings → Profile."
+            >
+              <button
+                onClick={() => setIsPublic((v) => !v)}
+                className="btn"
+                style={{
+                  background: isPublic ? "var(--c-green-soft, rgba(17, 196, 88, 0.08))" : "var(--c-bg-elev-3)",
+                  color: isPublic ? "var(--c-green-bright)" : "var(--c-fg-muted)",
+                  borderColor: isPublic ? "rgba(17, 196, 88, 0.35)" : "var(--c-border)",
+                }}
+              >
+                <Icon name={isPublic ? "check" : "x"} size={11} />
+                <span>{isPublic ? "Public — visible at /u/<your-handle>" : "Private (default)"}</span>
+              </button>
             </Field>
           </div>
         )}

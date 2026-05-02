@@ -61,7 +61,7 @@ export function PlaybookCard({ playbook, recentTrades }: { playbook: Playbook & 
         </div>
 
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8,
+          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(70px, 1fr))", gap: 8,
           padding: "10px 0", borderTop: "1px solid var(--c-border)", borderBottom: "1px solid var(--c-border)",
         }}>
           <KV label="Trades" value={String(playbook.stats.trades)} />

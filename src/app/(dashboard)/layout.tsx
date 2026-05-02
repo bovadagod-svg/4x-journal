@@ -18,6 +18,7 @@ import type { PnLDisplayMode } from "@/lib/pnl-display"
 import { MoneyProvider } from "@/lib/money-context"
 import { parseFxRates } from "@/lib/money"
 import { OnboardingModal } from "@/components/onboarding/onboarding-modal"
+import { RealtimeTrades } from "@/components/shell/realtime-trades"
 
 export default async function DashboardLayout({
   children,
@@ -115,6 +116,7 @@ export default async function DashboardLayout({
                 </div>
               </div>
               <TweaksPanel />
+              <RealtimeTrades userId={user.id} />
               {showOnboarding && <OnboardingModal />}
             </TradeDetailDrawerProvider>
           </JournalDrawerProvider>

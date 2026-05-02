@@ -199,7 +199,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ## 🟢 High-leverage, small lift
 
-### 12. `[ ]` Mobile QA pass at 375px
+### 12. `[x]` Mobile QA pass at 375px
 
 **Why:** Sidebar collapses to hamburger ≤ 768px ✅. But Risk page uses `repeat(4, 1fr)` for gauges — breaks below 600px. Reports KPI strip same. Several other pages too.
 
@@ -215,7 +215,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 13. `[ ]` Loading skeletons via `loading.tsx`
+### 13. `[x]` Loading skeletons via `loading.tsx`
 
 **Why:** Zero pages have loading UI. On slow network, blank screen for 1–2s while server-side data loads.
 
@@ -234,7 +234,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 14. `[ ]` Realtime trade updates via Supabase Realtime
+### 14. `[x]` Realtime trade updates via Supabase Realtime
 
 **Why:** If a TradingView webhook fires while you're on the Ledger, you have to refresh. Supabase Realtime can push it.
 
@@ -250,7 +250,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 15. `[ ]` Public profile route `/u/[handle]`
+### 15. `[x]` Public profile route `/u/[handle]`
 
 **Why:** `handle` field is in `user_settings` but no route consumes it. Read-only profile with display name + (opt-in) recent journal entries.
 

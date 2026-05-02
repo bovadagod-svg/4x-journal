@@ -190,6 +190,7 @@ export type Database = {
           created_at: string
           during_trade: Json
           id: string
+          is_public: boolean
           kind: string
           last_edited_at: string
           lessons: string | null
@@ -212,6 +213,7 @@ export type Database = {
           created_at?: string
           during_trade?: Json
           id?: string
+          is_public?: boolean
           kind?: string
           last_edited_at?: string
           lessons?: string | null
@@ -234,6 +236,7 @@ export type Database = {
           created_at?: string
           during_trade?: Json
           id?: string
+          is_public?: boolean
           kind?: string
           last_edited_at?: string
           lessons?: string | null
@@ -667,6 +670,37 @@ export type Database = {
       recompute_trade_aggregates: {
         Args: { p_trade_id: string }
         Returns: undefined
+      }
+      get_public_profile: {
+        Args: { p_handle: string }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          handle: string | null
+          joined_at: string
+          trade_count: number
+          win_count: number
+          loss_count: number
+          total_pnl: number
+        }[]
+      }
+      get_public_entries: {
+        Args: { p_user_id: string; p_limit?: number }
+        Returns: {
+          id: string
+          title: string | null
+          pre_trade: string | null
+          post_trade: string | null
+          cold_review: string | null
+          lessons: string | null
+          tags: string[]
+          mood: string | null
+          created_at: string
+          trade_pair: string | null
+          trade_side: string | null
+          trade_pnl: number | null
+          trade_r: number | null
+        }[]
       }
     }
     Enums: { [_ in never]: never }

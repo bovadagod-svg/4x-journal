@@ -322,8 +322,9 @@ function FillsTable({
   kind: "entry" | "exit"
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, overflowX: "auto" }}>
       <div style={{
+        minWidth: 440,
         display: "grid", gridTemplateColumns: "120px 1fr 80px 80px 60px",
         gap: 10, padding: "8px 10px",
         fontSize: 10, color: "var(--c-fg-muted)",
@@ -342,6 +343,7 @@ function FillsTable({
         <div
           key={f.id}
           style={{
+            minWidth: 440,
             display: "grid", gridTemplateColumns: "120px 1fr 80px 80px 60px",
             gap: 10, padding: "10px",
             borderBottom: i === fills.length - 1 ? "1px solid var(--c-border)" : "1px solid var(--c-border)",

@@ -83,7 +83,7 @@ export function PlaybookDrawer({
           </div>
 
           {/* Stats strip */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
             <Stat label="Net P&L" value={playbook.stats.closedTrades > 0 ? formatUSD(playbook.stats.totalPnL, { signed: true }) : "—"} color={playbook.stats.totalPnL >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
             <Stat label="Win Rate" value={playbook.stats.winRate != null ? `${playbook.stats.winRate}%` : "—"} />
             <Stat label="Expectancy" value={playbook.stats.expectancy != null ? `${playbook.stats.expectancy > 0 ? "+" : ""}${playbook.stats.expectancy}R` : "—"} color="var(--c-green-bright)" />
@@ -272,7 +272,7 @@ function PerformanceTab({ playbook, trades }: { playbook: Playbook & { stats: Pl
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
         {([
           ["Avg R", playbook.stats.avgR != null ? `${playbook.stats.avgR > 0 ? "+" : ""}${playbook.stats.avgR}R` : "—"],
           ["Trades", String(playbook.stats.trades)],

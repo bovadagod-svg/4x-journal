@@ -93,7 +93,7 @@ export function AccountCard({
         </div>
 
         {/* Stats grid */}
-        <div style={{ padding: "12px 18px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <div style={{ padding: "12px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 8 }}>
           <Stat label="Equity" value={formatUSD(equity)} />
           <Stat
             label="Open P&L"

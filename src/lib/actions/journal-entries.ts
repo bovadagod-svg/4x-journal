@@ -20,6 +20,7 @@ const SaveSchema = z.object({
   rule_break_tags: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
   mistakes: z.array(z.string()).default([]),
+  is_public: z.boolean().default(false),
 })
 
 type SaveInput = z.infer<typeof SaveSchema>

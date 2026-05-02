@@ -62,7 +62,7 @@ export function RiskAccountCard({
       </div>
 
       {/* Gauges */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, borderBottom: "1px solid var(--c-border)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 0, borderBottom: "1px solid var(--c-border)" }}>
         <GaugeCell
           label="Daily DD used"
           pct={dailyPct}
@@ -95,13 +95,15 @@ export function RiskAccountCard({
       {/* Live exposure */}
       {exposure.length > 0 && (
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--c-border)" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
             <h4 style={{ margin: 0, fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600 }}>Live exposure</h4>
             <span style={{ fontSize: 11, color: "var(--c-fg-muted)" }}>
               total at risk: <span className="tnum" style={{ color: "var(--c-amber)", fontWeight: 600 }}>{formatUSD(-totalOpenRisk, { signed: true })}</span>
             </span>
           </div>
+          <div style={{ overflowX: "auto" }}>
           <div style={{
+            minWidth: 440,
             display: "grid", gridTemplateColumns: "120px 60px 80px 1fr 100px",
             gap: 10, padding: "6px 0",
             fontSize: 10, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
@@ -111,6 +113,7 @@ export function RiskAccountCard({
           </div>
           {exposure.map((e) => (
             <div key={e.id} style={{
+              minWidth: 440,
               display: "grid", gridTemplateColumns: "120px 60px 80px 1fr 100px",
               gap: 10, padding: "9px 0",
               borderBottom: "1px solid var(--c-border)",
@@ -127,6 +130,7 @@ export function RiskAccountCard({
               </span>
             </div>
           ))}
+          </div>
         </div>
       )}
 
