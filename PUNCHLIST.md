@@ -269,7 +269,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ## 🟣 Bigger lifts
 
-### 16. `[ ]` MT4 / MT5 webhook bridge
+### 16. `[~]` MT4 / MT5 webhook bridge
 
 **Why:** Forex retail's largest user base. Bridge = a Python or MQL Expert Advisor running on the user's MT terminal that POSTs fills to your existing TradingView webhook endpoint.
 
