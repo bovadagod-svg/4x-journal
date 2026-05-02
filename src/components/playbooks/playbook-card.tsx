@@ -1,109 +1,117 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
-import { Icon } from "@/components/icons"
-import { deletePlaybook } from "@/lib/actions/playbooks"
+import { useState } from "react"
+import { Icon, PairFlag, type IconName } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
-import { PlaybookFormModal } from "./playbook-form-modal"
 import type { Playbook, PlaybookStats } from "@/lib/queries/playbooks"
+import { PlaybookDrawer } from "./playbook-drawer"
+import type { Trade } from "@/lib/queries/trades"
 
-export function PlaybookCard({ playbook }: { playbook: Playbook & { stats: PlaybookStats } }) {
-  const router = useRouter()
-  const [editing, setEditing] = useState(false)
-  const [pending, startTransition] = useTransition()
-
-  const onDelete = () => {
-    const msg = playbook.stats.trades > 0
-      ? `Delete "${playbook.name}"? ${playbook.stats.trades} trade${playbook.stats.trades === 1 ? " is" : "s are"} tagged with it; they'll keep their data but lose the link.`
-      : `Delete "${playbook.name}"?`
-    if (!confirm(msg)) return
-    startTransition(async () => {
-      const r = await deletePlaybook(playbook.id)
-      if (!r.ok) alert(r.error)
-      else router.refresh()
-    })
-  }
-
-  const { stats } = playbook
-  const pnlTone = stats.totalPnL > 0 ? "green" : stats.totalPnL < 0 ? "red" : undefined
+export function PlaybookCard({ playbook, recentTrades }: { playbook: Playbook & { stats: PlaybookStats }; recentTrades: Trade[] }) {
+  const [open, setOpen] = useState(false)
+  const isPositive = playbook.stats.expectancy != null && playbook.stats.expectancy > 0.5
+  const statusChip = playbook.status === "active" ? "chip-green" : playbook.status === "review" ? "chip-amber" : ""
 
   return (
     <>
-      <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12, position: "relative", overflow: "hidden" }}>
-        {/* Color band */}
-        <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, height: 3,
-          background: playbook.color,
-        }} />
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          textAlign: "left",
+          background: "var(--c-bg-elev-1)",
+          border: "1px solid var(--c-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          cursor: "pointer",
+          transition: "all 0.15s",
+          position: "relative",
+          overflow: "hidden",
+          color: "inherit",
+        }}
+      >
+        <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: playbook.color }} />
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
-            background: playbook.color,
-            display: "grid", placeItems: "center",
-            color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "var(--font-display)",
-            flexShrink: 0,
+            background: `${playbook.color}22`, border: `1px solid ${playbook.color}44`,
+            display: "grid", placeItems: "center", flexShrink: 0,
           }}>
-            {playbook.name.charAt(0)}
+            <Icon name={(playbook.icon as IconName) ?? "lightning"} size={17} color={playbook.color === "#9A97A1" ? "var(--c-fg-muted)" : playbook.color} />
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-display)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {playbook.name}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600 }}>{playbook.name}</h3>
+              <span className={`chip ${statusChip}`} style={{ fontSize: 9.5, padding: "1px 7px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {playbook.status}
+              </span>
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)" }}>
-              {playbook.target_r != null ? `Target ${playbook.target_r}R` : "No target set"}
-            </div>
+            {playbook.description && (
+              <p style={{
+                margin: "3px 0 0", fontSize: 11.5, color: "var(--c-fg-muted)", lineHeight: 1.4,
+                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+              }}>
+                {playbook.description}
+              </p>
+            )}
           </div>
         </div>
 
-        {playbook.notes && (
-          <p style={{
-            margin: 0, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.5,
-            display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8,
+          padding: "10px 0", borderTop: "1px solid var(--c-border)", borderBottom: "1px solid var(--c-border)",
+        }}>
+          <KV label="Trades" value={String(playbook.stats.trades)} />
+          <KV label="Win %" value={playbook.stats.winRate != null ? `${playbook.stats.winRate}%` : "—"} />
+          <KV label="Exp." value={playbook.stats.expectancy != null ? `${playbook.stats.expectancy > 0 ? "+" : ""}${playbook.stats.expectancy}R` : "—"} color={isPositive ? "var(--c-green-bright)" : "var(--c-fg-muted)"} />
+          <KV label="PF" value={pf(playbook.stats)} color="var(--c-purple-bright)" />
+        </div>
+
+        <div>
+          <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", marginBottom: 4 }}>Net P&L</div>
+          <div className="tnum" style={{
+            fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 600,
+            color: playbook.stats.totalPnL > 0 ? "var(--c-green-bright)" : playbook.stats.totalPnL < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)",
           }}>
-            {playbook.notes}
-          </p>
+            {playbook.stats.closedTrades > 0 ? formatUSD(playbook.stats.totalPnL, { signed: true }) : "—"}
+          </div>
+        </div>
+
+        {playbook.pairs && playbook.pairs.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {playbook.pairs.slice(0, 3).map((p) => (
+              <span key={p} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, padding: "2px 7px", borderRadius: 999, background: "var(--c-bg-elev-3)", color: "var(--c-fg-muted)" }}>
+                <PairFlag pair={p} size={11} /> {p}
+              </span>
+            ))}
+            {playbook.pairs.length > 3 && (
+              <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)", padding: "2px 7px" }}>+{playbook.pairs.length - 3}</span>
+            )}
+          </div>
         )}
+      </button>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid var(--c-border)", borderBottom: "1px solid var(--c-border)" }}>
-          <Stat label="Trades" value={String(stats.trades)} />
-          <Stat label="Win rate" value={stats.winRate != null ? `${stats.winRate}%` : "—"} />
-          <Stat label="Avg R" value={stats.avgR != null ? `${stats.avgR > 0 ? "+" : ""}${stats.avgR}` : "—"} tone={stats.avgR != null && stats.avgR > 0 ? "green" : stats.avgR != null && stats.avgR < 0 ? "red" : undefined} />
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11.5 }}>
-          <span style={{ color: "var(--c-fg-muted)" }}>Total P&L</span>
-          <span className="tnum" style={{
-            fontFamily: "var(--font-mono)", fontWeight: 600,
-            color: pnlTone === "green" ? "var(--c-green-bright)" : pnlTone === "red" ? "var(--c-red-bright)" : "var(--c-fg)",
-          }}>
-            {stats.closedTrades > 0 ? formatUSD(stats.totalPnL, { signed: true }) : "—"}
-          </span>
-        </div>
-
-        <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
-          <button onClick={() => setEditing(true)} className="btn" style={{ flex: 1, justifyContent: "center" }}>
-            <Icon name="edit" size={12} />
-            <span>Edit</span>
-          </button>
-          <button onClick={onDelete} disabled={pending} className="btn" title="Delete">
-            <Icon name="x" size={12} />
-          </button>
-        </div>
-      </div>
-
-      <PlaybookFormModal open={editing} onClose={() => setEditing(false)} playbook={playbook} />
+      <PlaybookDrawer playbook={open ? playbook : null} onClose={() => setOpen(false)} recentTrades={recentTrades} />
     </>
   )
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "green" | "red" }) {
-  const color = tone === "green" ? "var(--c-green-bright)" : tone === "red" ? "var(--c-red-bright)" : "var(--c-fg)"
+function KV({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{label}</div>
-      <div className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 500, color }}>{value}</div>
+      <div style={{ fontSize: 9.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+      <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: color ?? "var(--c-fg)" }}>{value}</div>
     </div>
   )
+}
+
+function pf(s: PlaybookStats): string {
+  if (s.closedTrades === 0) return "—"
+  // Profit factor isn't on PlaybookStats — derive from totalPnL won vs lost.
+  // Approximation: if we don't have grossWin/grossLoss split, return avgR-based proxy.
+  if (s.avgR == null) return "—"
+  return s.avgR > 0 ? (1 + s.avgR).toFixed(2) : "—"
 }

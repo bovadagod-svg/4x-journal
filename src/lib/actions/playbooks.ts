@@ -4,12 +4,25 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 
+const splitLines = (s: unknown): string[] =>
+  typeof s === "string" ? s.split("\n").map((x) => x.trim()).filter(Boolean) : []
+const splitCsv = (s: unknown): string[] =>
+  typeof s === "string" ? s.split(",").map((x) => x.trim()).filter(Boolean) : []
+
 const PlaybookSchema = z.object({
   name: z.string().min(1, { error: "Name required." }).max(60),
   color: z.string().regex(/^#[0-9a-f]{6}$/i, { error: "Hex color required." }),
+  icon: z.string().min(1).default("lightning"),
+  status: z.enum(["active", "review", "draft"]).default("active"),
+  description: z.string().max(400).nullish().or(z.literal("").transform(() => null)),
+  pairs: z.preprocess(splitCsv, z.array(z.string()).default([])),
+  sessions: z.preprocess(splitCsv, z.array(z.string()).default([])),
+  timeframe: z.string().max(60).nullish().or(z.literal("").transform(() => null)),
+  rules: z.preprocess(splitLines, z.array(z.string()).default([])),
+  invalidations: z.preprocess(splitLines, z.array(z.string()).default([])),
+  risk_per_trade_pct: z.coerce.number().min(0).max(100).nullish().or(z.literal("").transform(() => null)),
+  target_r: z.coerce.number().nonnegative().nullish().or(z.literal("").transform(() => null)),
   notes: z.string().max(4000).nullish().or(z.literal("").transform(() => null)),
-  target_r: z.coerce.number().nonnegative().nullish()
-    .or(z.literal("").transform(() => null)),
 })
 
 export type PlaybookFormState =
@@ -25,7 +38,7 @@ export async function createPlaybook(
   if (!parsed.success) {
     return {
       ok: false,
-      error: "Some fields need fixing.",
+      error: parsed.error.issues[0]?.message ?? "Some fields need fixing.",
       fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<string, string[]>,
     }
   }
@@ -38,7 +51,6 @@ export async function createPlaybook(
     .insert({ ...parsed.data, user_id: user.id })
     .select("id")
     .single()
-
   if (error || !data) return { ok: false, error: error?.message ?? "Failed to create playbook." }
 
   revalidatePath("/playbooks")
@@ -56,7 +68,7 @@ export async function updatePlaybook(
   if (!parsed.success) {
     return {
       ok: false,
-      error: "Some fields need fixing.",
+      error: parsed.error.issues[0]?.message ?? "Some fields need fixing.",
       fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<string, string[]>,
     }
   }

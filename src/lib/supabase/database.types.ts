@@ -260,30 +260,57 @@ export type Database = {
         Row: {
           color: string
           created_at: string
+          description: string | null
+          icon: string
           id: string
+          invalidations: string[]
           name: string
           notes: string | null
+          pairs: string[]
+          risk_per_trade_pct: number | null
+          rules: string[]
+          sessions: string[]
+          status: string
           target_r: number | null
+          timeframe: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           color?: string
           created_at?: string
+          description?: string | null
+          icon?: string
           id?: string
+          invalidations?: string[]
           name: string
           notes?: string | null
+          pairs?: string[]
+          risk_per_trade_pct?: number | null
+          rules?: string[]
+          sessions?: string[]
+          status?: string
           target_r?: number | null
+          timeframe?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           color?: string
           created_at?: string
+          description?: string | null
+          icon?: string
           id?: string
+          invalidations?: string[]
           name?: string
           notes?: string | null
+          pairs?: string[]
+          risk_per_trade_pct?: number | null
+          rules?: string[]
+          sessions?: string[]
+          status?: string
           target_r?: number | null
+          timeframe?: string | null
           updated_at?: string
           user_id?: string
         }
