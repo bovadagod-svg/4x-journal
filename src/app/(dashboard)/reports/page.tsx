@@ -1,153 +1,276 @@
-import Link from "next/link"
 import { SectionHeader } from "@/components/shell/section-header"
 import { SECTION_META } from "@/lib/sections"
-import { Icon } from "@/components/icons"
+import { Icon, type IconName } from "@/components/icons"
 import { getUserAccounts } from "@/lib/queries/accounts"
+import { createClient } from "@/lib/supabase/server"
+import { formatUSD } from "@/lib/finance"
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10)
-}
-function startOfMonthIso() {
-  const d = new Date()
-  d.setDate(1)
-  return d.toISOString().slice(0, 10)
-}
-function startOfYearIso() {
-  const d = new Date()
-  d.setMonth(0, 1)
-  return d.toISOString().slice(0, 10)
-}
-function currentMonthLabel() {
-  return new Date().toISOString().slice(0, 7) // YYYY-MM
-}
+function todayIso() { return new Date().toISOString().slice(0, 10) }
+function startOfMonthIso() { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) }
+function startOfYearIso() { const d = new Date(); d.setMonth(0, 1); return d.toISOString().slice(0, 10) }
+function currentMonthLabel() { return new Date().toISOString().slice(0, 7) }
 
 export default async function ReportsPage() {
   const m = SECTION_META.reports
-  const accounts = await getUserAccounts()
+  const [accounts, ytdStats] = await Promise.all([
+    getUserAccounts(),
+    getYtdStats(),
+  ])
+  const taxYear = new Date().getFullYear()
 
   return (
     <>
       <SectionHeader
         title={m.title}
-        subtitle="Tax-ready CSV exports + monthly summary printouts. Real PDF rendering and prop-firm progress reports come in Phase 10."
+        subtitle="Tax-ready CSV exports and monthly print-ready summaries · PDFs and prop-firm reports arrive in Phase 10"
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
-        {/* Trades CSV */}
-        <ReportCard
-          icon="reports"
-          title="Trade history (CSV)"
-          description="Every trade — opened, closed, account, P&L, R, tags, notes. Tax-software friendly."
-          action="/api/reports/trades"
-          download
-        >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <Field label="From">
-              <input name="from" type="date" defaultValue={startOfYearIso()} style={input} />
-            </Field>
-            <Field label="To">
-              <input name="to" type="date" defaultValue={todayIso()} style={input} />
-            </Field>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <Field label="Account">
-              <select name="account" defaultValue="all" style={input}>
-                <option value="all">All accounts</option>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.broker} · {a.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Status">
-              <select name="status" defaultValue="all" style={input}>
-                <option value="all">All</option>
-                <option value="closed">Closed only</option>
-                <option value="open">Open only</option>
-              </select>
-            </Field>
-          </div>
-        </ReportCard>
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        <Kpi
+          label={`${taxYear} Net P&L`}
+          value={ytdStats.trades > 0 ? formatUSD(ytdStats.netPnL, { signed: true }) : "—"}
+          sub={ytdStats.trades > 0 ? `across ${accounts.length} account${accounts.length === 1 ? "" : "s"}` : "no closed trades yet"}
+          color={ytdStats.netPnL > 0 ? "var(--c-green-bright)" : ytdStats.netPnL < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)"}
+        />
+        <Kpi
+          label="Total Trades"
+          value={String(ytdStats.trades)}
+          sub={ytdStats.trades > 0 ? `${ytdStats.winRate}% win rate` : "log a trade to start"}
+        />
+        <Kpi
+          label="Wins / Losses"
+          value={ytdStats.trades > 0 ? `${ytdStats.wins} / ${ytdStats.losses}` : "—"}
+          sub={ytdStats.breakeven > 0 ? `${ytdStats.breakeven} breakeven` : "year-to-date"}
+        />
+        <Kpi
+          label="Tax Year"
+          value={String(taxYear)}
+          sub={`filing due Apr 15, ${taxYear + 1}`}
+          color="var(--c-amber)"
+        />
+      </div>
 
-        {/* Journal CSV */}
-        <ReportCard
-          icon="journal"
-          title="Journal entries (CSV)"
-          description="Every entry across all 6 fields plus rule-break flags. Useful for retrospective reviews."
-          action="/api/reports/journal"
-          download
-        >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <Field label="From">
-              <input name="from" type="date" defaultValue={startOfMonthIso()} style={input} />
-            </Field>
-            <Field label="To">
-              <input name="to" type="date" defaultValue={todayIso()} style={input} />
-            </Field>
-          </div>
-        </ReportCard>
+      {/* Generate New Report */}
+      <div>
+        <h3 style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 600, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Generate New Report</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+          {/* Trade CSV */}
+          <ReportTile
+            icon="reports"
+            color="#11C458"
+            title="Trade history (CSV)"
+            description="Every trade — opened, closed, account, P&L, R, tags, notes. Tax-software friendly."
+            badge="Most used"
+          >
+            <form method="get" action="/api/reports/trades" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Field label="From">
+                  <input name="from" type="date" defaultValue={startOfYearIso()} style={input} />
+                </Field>
+                <Field label="To">
+                  <input name="to" type="date" defaultValue={todayIso()} style={input} />
+                </Field>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Field label="Account">
+                  <select name="account" defaultValue="all" style={input}>
+                    <option value="all">All accounts</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.broker} · {a.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Status">
+                  <select name="status" defaultValue="all" style={input}>
+                    <option value="all">All</option>
+                    <option value="closed">Closed only</option>
+                    <option value="open">Open only</option>
+                  </select>
+                </Field>
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                <Icon name="external" size={13} />
+                <span>Download CSV</span>
+              </button>
+            </form>
+          </ReportTile>
 
-        {/* Monthly summary print view */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <CardHeader icon="analytics" title="Monthly summary" description="Print-friendly recap with KPIs, equity curve, and a trade list. Save as PDF from your browser." />
-          <form method="get" action="/reports/monthly" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-            <Field label="Month">
-              <input name="month" type="month" defaultValue={currentMonthLabel()} required style={{ ...input, width: 160 }} />
-            </Field>
-            <button type="submit" className="btn btn-primary">
-              <Icon name="external" size={13} /> <span>Open</span>
-            </button>
-          </form>
+          {/* Journal CSV */}
+          <ReportTile
+            icon="journal"
+            color="#E5A23B"
+            title="Journal entries (CSV)"
+            description="All notes, mood, mistakes, lessons, rule-break flags. Useful for retrospective reviews."
+          >
+            <form method="get" action="/api/reports/journal" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Field label="From">
+                  <input name="from" type="date" defaultValue={startOfMonthIso()} style={input} />
+                </Field>
+                <Field label="To">
+                  <input name="to" type="date" defaultValue={todayIso()} style={input} />
+                </Field>
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                <Icon name="external" size={13} />
+                <span>Download CSV</span>
+              </button>
+            </form>
+          </ReportTile>
+
+          {/* Monthly summary */}
+          <ReportTile
+            icon="analytics"
+            color="#6932D4"
+            title="Monthly summary"
+            description="Print-friendly recap with KPIs, equity curve, and trade list. Save as PDF from your browser."
+          >
+            <form method="get" action="/reports/monthly" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Field label="Month">
+                <input name="month" type="month" defaultValue={currentMonthLabel()} required style={{ ...input, width: 160 }} />
+              </Field>
+              <button type="submit" className="btn btn-primary">
+                <Icon name="external" size={13} />
+                <span>Open</span>
+              </button>
+            </form>
+          </ReportTile>
+
+          {/* Roadmap tiles */}
+          <RoadmapTile icon="reports" color="#11C458" title="Tax Statement (PDF)" desc="IRS 8949 / Schedule D ready P&L by account, organized by tax lot." />
+          <RoadmapTile icon="accounts" color="#4312A0" title="Prop Firm Statement" desc="FunderPro / FTMO compliant — daily DD, profit target, payouts." />
+          <RoadmapTile icon="playbook" color="#BE333D" title="Playbook Audit" desc="Per-setup expectancy, win rate, sample trades and rule adherence." />
         </div>
+      </div>
 
-        {/* Coming soon */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8, opacity: 0.7 }}>
-          <CardHeader
-            icon="risk"
-            title="Prop firm progress (coming soon)"
-            description="Day-by-day equity vs. firm rules: drawdown remaining, profit target progress, days remaining. Phase 10."
-          />
-          <span className="chip" style={{ alignSelf: "flex-start", fontSize: 10.5 }}>Roadmap</span>
+      {/* Tax Summary */}
+      <div className="card">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14, gap: 12 }}>
+          <div>
+            <h3 className="card-title">{taxYear} Tax Summary</h3>
+            <p className="card-subtitle">Realized P&L · running totals as of {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+          </div>
+          <a href={`/api/reports/trades?from=${taxYear}-01-01&to=${todayIso()}&account=all&status=closed`} className="btn btn-primary">
+            <Icon name="external" size={13} />
+            <span>Export tax CSV</span>
+          </a>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
+          <TaxStat label="Short-term gains" value={ytdStats.totalWinPnL > 0 ? formatUSD(ytdStats.totalWinPnL) : "—"} color="var(--c-green-bright)" />
+          <TaxStat label="Short-term losses" value={ytdStats.totalLossPnL < 0 ? formatUSD(ytdStats.totalLossPnL) : "—"} color="var(--c-red-bright)" />
+          <TaxStat label="Net realized" value={ytdStats.trades > 0 ? formatUSD(ytdStats.netPnL, { signed: true }) : "—"} color={ytdStats.netPnL >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
+          <TaxStat label="Closed positions" value={String(ytdStats.closedTrades)} color="var(--c-fg)" />
+        </div>
+        <div style={{ padding: 12, background: "rgba(105, 50, 212, 0.08)", border: "1px solid rgba(105, 50, 212, 0.2)", borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)", display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <Icon name="info" size={14} color="var(--c-purple-bright)" />
+          <span>
+            Section 988 (forex ordinary income) treatment applied by default. If you&apos;ve elected Section 1256 60/40 treatment, your accountant will need the same CSV — wash-sale matching is your tax software&apos;s job.
+          </span>
         </div>
       </div>
     </>
   )
 }
 
-function ReportCard({
-  icon, title, description, action, download, children,
+async function getYtdStats() {
+  const supabase = await createClient()
+  const yearStart = new Date(); yearStart.setMonth(0, 1); yearStart.setHours(0, 0, 0, 0)
+  const { data } = await supabase
+    .from("trades")
+    .select("pnl, status")
+    .gte("opened_at", yearStart.toISOString())
+  const all = data ?? []
+  const closed = all.filter((t) => t.status === "closed")
+  const wins = closed.filter((t) => Number(t.pnl) > 0)
+  const losses = closed.filter((t) => Number(t.pnl) < 0)
+  const breakeven = closed.length - wins.length - losses.length
+  const totalWinPnL = wins.reduce((s, t) => s + Number(t.pnl), 0)
+  const totalLossPnL = losses.reduce((s, t) => s + Number(t.pnl), 0)
+  const netPnL = totalWinPnL + totalLossPnL
+  const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : 0
+  return {
+    trades: all.length,
+    closedTrades: closed.length,
+    wins: wins.length,
+    losses: losses.length,
+    breakeven,
+    totalWinPnL: Number(totalWinPnL.toFixed(2)),
+    totalLossPnL: Number(totalLossPnL.toFixed(2)),
+    netPnL: Number(netPnL.toFixed(2)),
+    winRate,
+  }
+}
+
+function ReportTile({
+  icon, color, title, description, badge, children,
 }: {
-  icon: "reports" | "journal" | "analytics"
+  icon: IconName
+  color: string
   title: string
   description: string
-  action: string
-  download?: boolean
+  badge?: string
   children: React.ReactNode
 }) {
   return (
-    <form method="get" action={action} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <CardHeader icon={icon} title={title} description={description} />
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 9,
+          background: `${color}22`, border: `1px solid ${color}44`,
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          <Icon name={icon} size={17} color={color} />
+        </div>
+        {badge && <span className="chip chip-purple" style={{ fontSize: 10 }}>{badge}</span>}
+      </div>
+      <div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 600 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)", marginTop: 3, lineHeight: 1.45 }}>{description}</div>
+      </div>
       {children}
-      <button type="submit" className="btn btn-primary" style={{ marginTop: 4, alignSelf: "flex-start" }}>
-        <Icon name="external" size={13} />
-        <span>{download ? "Download CSV" : "Open"}</span>
-      </button>
-    </form>
+    </div>
   )
 }
 
-function CardHeader({ icon, title, description }: { icon: "reports" | "journal" | "analytics" | "risk"; title: string; description: string }) {
+function RoadmapTile({ icon, color, title, desc }: { icon: IconName; color: string; title: string; desc: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 10,
-        background: "var(--c-bg-elev-3)",
-        display: "grid", placeItems: "center",
-        color: "var(--c-fg-muted)", flexShrink: 0,
-      }}>
-        <Icon name={icon} size={17} />
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12, opacity: 0.55 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 9,
+          background: `${color}22`, border: `1px solid ${color}44`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <Icon name={icon} size={17} color={color} />
+        </div>
+        <span className="chip" style={{ fontSize: 10 }}>Roadmap</span>
       </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <h3 className="card-title" style={{ fontSize: 14 }}>{title}</h3>
-        <p className="card-subtitle" style={{ marginTop: 2, lineHeight: 1.4 }}>{description}</p>
+      <div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 600 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)", marginTop: 3, lineHeight: 1.45 }}>{desc}</div>
       </div>
+      <button disabled className="btn" style={{ alignSelf: "flex-start", opacity: 0.5, cursor: "not-allowed" }}>
+        <Icon name="external" size={13} />
+        <span>Coming soon</span>
+      </button>
+    </div>
+  )
+}
+
+function Kpi({ label, value, sub, color }: { label: string; value: string; sub: string; color?: string }) {
+  return (
+    <div className="card" style={{ padding: "14px 16px" }}>
+      <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+      <div className="tnum" style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 600, color: color ?? "var(--c-fg)", marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: 11, color: "var(--c-fg-dim)", marginTop: 2 }}>{sub}</div>
+    </div>
+  )
+}
+
+function TaxStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ background: "var(--c-bg-elev-2)", padding: 12, borderRadius: 8, border: "1px solid var(--c-border)" }}>
+      <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+      <div className="tnum" style={{ fontSize: 18, fontWeight: 600, color, fontFamily: "var(--font-display)", marginTop: 2 }}>{value}</div>
     </div>
   )
 }
@@ -172,6 +295,3 @@ const input: React.CSSProperties = {
   width: "100%",
   fontFamily: "var(--font-mono)",
 }
-
-// Use unused imports defensively in case icon set narrows.
-export const _link = Link

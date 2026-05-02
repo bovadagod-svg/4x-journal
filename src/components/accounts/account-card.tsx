@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useState } from "react"
 import { Icon } from "@/components/icons"
-import { deleteAccount, setDefaultAccount } from "@/lib/actions/accounts"
+import { Sparkline } from "@/components/charts/sparkline"
 import { formatUSD } from "@/lib/finance"
 import { AccountFormModal } from "./account-form-modal"
-import { SyncTradeLockerButton } from "./sync-button"
+import { AccountDrawer } from "./account-drawer"
 import type { Account } from "./accounts-context"
 
 export type AccountConnection = {
@@ -18,106 +17,125 @@ export type AccountConnection = {
   trades_synced: number
 }
 
-export function AccountCard({ account, tradeCount, connection }: { account: Account; tradeCount: number; connection?: AccountConnection | null }) {
-  const router = useRouter()
-  const [editing, setEditing] = useState(false)
-  const [pending, startTransition] = useTransition()
+export function AccountCard({
+  account,
+  tradeCount,
+  connection,
+  spark,
+}: {
+  account: Account
+  tradeCount: number
+  connection?: AccountConnection | null
+  spark: number[]
+}) {
+  const [open, setOpen] = useState(false)
 
-  const onDelete = () => {
-    const msg = tradeCount > 0
-      ? `Delete "${account.label}"? This will also delete all ${tradeCount} trade${tradeCount === 1 ? "" : "s"} on this account.`
-      : `Delete "${account.label}"?`
-    if (!confirm(msg)) return
-    startTransition(async () => {
-      const r = await deleteAccount(account.id)
-      if (!r.ok) alert(r.error)
-      else router.refresh()
-    })
-  }
-
-  const onSetDefault = () => {
-    startTransition(async () => {
-      const r = await setDefaultAccount(account.id)
-      if (!r.ok) alert(r.error)
-      else router.refresh()
-    })
-  }
+  const balance = Number(account.balance)
+  const equity = Number(account.equity)
+  const openPnL = equity - balance
+  const startBal = spark.length > 0 ? spark[0] : balance
+  const change = balance - startBal
+  const changePct = startBal > 0 ? (change / startBal) * 100 : 0
+  const isPositive = change >= 0
 
   return (
     <>
-      <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: account.color,
-            display: "grid", placeItems: "center",
-            color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "var(--font-display)",
-            flexShrink: 0,
-          }}>
-            {account.broker.charAt(0)}
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-display)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {account.label}
-              </span>
-              {account.is_default && (
-                <span className="chip chip-purple" style={{ fontSize: 9.5 }}>Default</span>
-              )}
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          textAlign: "left",
+          background: "var(--c-bg-elev-1)",
+          border: "1px solid var(--c-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          cursor: "pointer",
+          position: "relative",
+          overflow: "hidden",
+          transition: "all 0.15s",
+          color: "inherit",
+        }}
+      >
+        {/* color stripe */}
+        <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: account.color }} />
+
+        {/* Header block */}
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border)" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
+                {account.broker}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {account.label}
+                </div>
+                {account.is_default && <span className="chip chip-purple" style={{ fontSize: 9.5 }}>Default</span>}
+              </div>
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)" }}>
-              {account.broker} · <span style={{ textTransform: "capitalize" }}>{account.status}</span>
+            <StatusDot status={account.status} />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginTop: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="tnum" style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em" }}>
+                {formatUSD(balance)}
+              </div>
+              <div className="tnum" style={{ fontSize: 11.5, marginTop: 2, color: isPositive ? "var(--c-green-bright)" : "var(--c-red-bright)" }}>
+                {isPositive ? "▲" : "▼"} {formatUSD(change, { signed: true })} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%) <span style={{ color: "var(--c-fg-dim)" }}>· 7d</span>
+              </div>
+            </div>
+            <div style={{ flexShrink: 0 }}>
+              <Sparkline points={spark.length >= 2 ? spark : [balance, balance]} color={isPositive ? "#11C458" : "#BE333D"} width={110} height={36} />
             </div>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid var(--c-border)", borderBottom: "1px solid var(--c-border)" }}>
-          <Stat label="Balance" value={formatUSD(Number(account.balance))} />
-          <Stat label="Equity" value={formatUSD(Number(account.equity))} />
+        {/* Stats grid */}
+        <div style={{ padding: "12px 18px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          <Stat label="Equity" value={formatUSD(equity)} />
+          <Stat
+            label="Open P&L"
+            value={Math.abs(openPnL) > 0.01 ? formatUSD(openPnL, { signed: true }) : "—"}
+            color={openPnL > 0 ? "var(--c-green-bright)" : openPnL < 0 ? "var(--c-red-bright)" : undefined}
+          />
+          <Stat label="Trades" value={String(tradeCount)} />
         </div>
 
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <span className="chip" style={{ fontSize: 10.5 }}>
-            {tradeCount} trade{tradeCount === 1 ? "" : "s"}
-          </span>
-          <span className="chip" style={{ fontSize: 10.5 }}>{account.currency}</span>
-          {connection && (
-            <span className="chip chip-purple" style={{ fontSize: 10.5 }}>
-              <Icon name="external" size={10} />
-              {connection.provider === "tradelocker" ? "TradeLocker linked" : connection.provider}
+        {/* Footer chips */}
+        <div style={{ padding: "10px 18px 14px", borderTop: "1px solid var(--c-border)", background: "var(--c-bg-elev-2)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="chip" style={{ fontSize: 10, textTransform: "uppercase" }}>{account.currency}</span>
+          {connection ? (
+            <span className="chip chip-purple" style={{ fontSize: 10 }}>
+              <Icon name="external" size={9} /> {connection.provider}
+            </span>
+          ) : (
+            <span className="chip" style={{ fontSize: 10, color: "var(--c-fg-dim)" }}>Manual</span>
+          )}
+          {connection?.last_sync_status === "ok" && (
+            <span className="chip chip-green" style={{ fontSize: 10 }}>
+              <Icon name="check" size={9} /> synced
             </span>
           )}
-        </div>
-
-        {connection ? (
-          <SyncTradeLockerButton
-            connectionId={connection.id}
-            lastSyncedAt={connection.last_synced_at}
-            lastStatus={connection.last_sync_status}
-            lastError={connection.last_sync_error}
-            tradesSynced={connection.trades_synced}
-          />
-        ) : null}
-
-        <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
-          <button onClick={() => setEditing(true)} className="btn" style={{ flex: 1, justifyContent: "center" }}>
-            <Icon name="edit" size={12} />
-            <span>Edit</span>
-          </button>
-          {!account.is_default && (
-            <button onClick={onSetDefault} disabled={pending} className="btn" title="Set as default">
-              <Icon name="check" size={12} />
-            </button>
+          {connection?.last_sync_status === "error" && (
+            <span className="chip chip-red" style={{ fontSize: 10 }}>sync error</span>
           )}
-          {!connection && (
-            <button onClick={onDelete} disabled={pending} className="btn" title="Delete">
-              <Icon name="x" size={12} />
-            </button>
-          )}
+          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--c-fg-dim)" }}>
+            <Icon name="chevronRight" size={11} />
+          </span>
         </div>
-      </div>
+      </button>
 
-      <AccountFormModal open={editing} onClose={() => setEditing(false)} account={account} />
+      {open && (
+        <AccountDrawer
+          account={account}
+          spark={spark}
+          tradeCount={tradeCount}
+          connection={connection ?? null}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   )
 }
@@ -135,11 +153,55 @@ export function AddAccountButton() {
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+export function ConnectTile({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      background: "transparent",
+      border: "1.5px dashed var(--c-border-strong)",
+      borderRadius: "var(--radius-lg)",
+      padding: 18, minHeight: 220,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
+      color: "var(--c-fg-muted)", cursor: "pointer",
+      transition: "all 0.15s",
+    }}>
+      <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--c-bg-elev-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon name="plus" size={20} />
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600 }}>Add Account</div>
+      <div style={{ fontSize: 11.5, textAlign: "center", maxWidth: 220, lineHeight: 1.4 }}>
+        Manual entry · CSV import · TradeLocker connection
+      </div>
+    </button>
+  )
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{label}</div>
-      <div className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 500, color: "var(--c-fg)" }}>{value}</div>
+      <div style={{ fontSize: 10, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+      <div className="tnum" style={{ fontSize: 12.5, fontWeight: 500, color: color ?? "var(--c-fg)", marginTop: 1 }}>{value}</div>
     </div>
+  )
+}
+
+function StatusDot({ status }: { status: string }) {
+  const map: Record<string, { c: string; t: string }> = {
+    live: { c: "#11C458", t: "Live" },
+    funded: { c: "#11C458", t: "Funded" },
+    demo: { c: "#9A97A1", t: "Demo" },
+    challenge: { c: "#E5A23B", t: "Challenge" },
+    breached: { c: "#BE333D", t: "Breached" },
+    paused: { c: "#E5A23B", t: "Paused" },
+  }
+  const s = map[status] ?? { c: "#9A97A1", t: status }
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "capitalize" }}>
+      <span style={{
+        width: 7, height: 7, borderRadius: "50%",
+        background: s.c,
+        boxShadow: status === "live" || status === "funded" ? `0 0 8px ${s.c}` : "none",
+      }} />
+      {s.t}
+    </span>
   )
 }
