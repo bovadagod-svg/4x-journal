@@ -14,6 +14,7 @@ import {
   type TradeDetail,
 } from "@/lib/actions/trades"
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
+import { usePnLDisplay } from "@/lib/pnl-display-context"
 
 type Tab = "order" | "fills" | "actions"
 
@@ -23,6 +24,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
   const [tab, setTab] = useState<Tab>("order")
   const [, startTransition] = useTransition()
   const journal = useJournalDrawer()
+  const pnlDisplay = usePnLDisplay()
 
   // Fetch detail when tradeId changes
   useEffect(() => {
@@ -102,12 +104,19 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
               {/* P&L / R headline */}
               <div style={{ display: "flex", gap: 18, alignItems: "flex-end", marginBottom: 14 }}>
                 <div>
-                  <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Realized P&L</div>
+                  <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{pnlDisplay.label("Realized P&L")}</div>
                   <div className="tnum" style={{
                     fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em",
                     color: t.pnl == null ? "var(--c-fg-muted)" : t.pnl > 0 ? "var(--c-green-bright)" : t.pnl < 0 ? "var(--c-red-bright)" : "var(--c-fg)",
                   }}>
-                    {t.pnl != null ? formatUSD(Number(t.pnl), { signed: true }) : "—"}
+                    {pnlDisplay.format({
+                      pnl: t.pnl != null ? Number(t.pnl) : null,
+                      r: t.r != null ? Number(t.r) : null,
+                      // percent mode falls back to "—" when account equity isn't
+                      // plumbed through; rmultiple + money work for every trade.
+                      equity: null,
+                      signed: true,
+                    })}
                   </div>
                 </div>
                 <div>

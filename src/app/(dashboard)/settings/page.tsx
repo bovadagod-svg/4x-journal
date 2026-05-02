@@ -14,10 +14,12 @@ import { TaxPanel } from "@/components/settings/tax-panel"
 import { BehaviorPanel } from "@/components/settings/behavior-panel"
 import { IntegrationsPanel } from "@/components/settings/integrations-panel"
 import { DataPanel } from "@/components/settings/data-panel"
+import { FxRatesPanel } from "@/components/settings/fx-rates-panel"
+import { parseFxRates } from "@/lib/money"
 
 const VALID_TABS: SettingsTabId[] = [
   "profile", "appearance", "notifications", "trading", "behavior",
-  "journal", "tax", "integrations", "data",
+  "journal", "tax", "fx_rates", "integrations", "data",
 ]
 
 export default async function SettingsPage({
@@ -131,6 +133,12 @@ export default async function SettingsPage({
     ),
     integrations: (
       <IntegrationsPanel userId={user.id} secret={s?.webhook_secret ?? null} baseUrl={baseUrl} />
+    ),
+    fx_rates: (
+      <FxRatesPanel
+        initial={parseFxRates(s?.fx_rates)}
+        displayCurrency={s?.display_currency ?? "USD"}
+      />
     ),
     data: <DataPanel email={user.email ?? ""} />,
   }

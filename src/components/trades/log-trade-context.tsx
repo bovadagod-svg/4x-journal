@@ -17,6 +17,13 @@ export type NewsAvoidanceEvent = {
   scheduled_at: string
 }
 
+export type AccountRiskCap = {
+  /** Hard $ cap per trade — null if unset on the account's risk_rules row */
+  max_risk_per_trade_usd: number | null
+  /** % cap × equity — null if unset */
+  max_risk_per_trade_pct: number | null
+}
+
 export type TradeDefaults = {
   sizing_method: "fixed-risk" | "fixed-lots" | "kelly" | "volatility-scaled"
   default_risk_pct: number
@@ -26,6 +33,14 @@ export type TradeDefaults = {
   require_journal_mood: boolean
   /** Risk-as-%-of-equity threshold above which a confirm dialog fires. */
   confirm_above_pct: number
+  /**
+   * When true, the suggested risk amount in the Log Trade modal never exceeds
+   * the active account's `max_risk_per_trade_*` rule values. Hard caps in
+   * risk_rules still block submission server-side regardless of this flag.
+   */
+  cap_by_prop_rule: boolean
+  /** Per-account risk caps, keyed by account_id. Null entries mean no rule set. */
+  account_risk_caps: Record<string, AccountRiskCap>
   /**
    * News-avoidance context. Server has already filtered down to high-impact
    * events whose blocked window overlaps `now`. Modal just needs to match by

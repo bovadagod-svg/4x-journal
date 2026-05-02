@@ -123,6 +123,36 @@ export async function updateJournal(_prev: SettingsFormState, formData: FormData
   return applyPatch(parsed.data as Update)
 }
 
+// ─── FX rates ──────────────────────────────────────────────────────────────
+const FxRatesSchema = z.object({
+  rates: z.string(), // JSON-stringified map
+})
+
+export async function updateFxRates(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
+  const parsed = FxRatesSchema.safeParse({ rates: formData.get("rates") })
+  if (!parsed.success) return { ok: false, error: "Bad rates payload." }
+  let rates: Record<string, number>
+  try {
+    const raw = JSON.parse(parsed.data.rates)
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return { ok: false, error: "Rates must be a JSON object." }
+    }
+    rates = {}
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) {
+        return { ok: false, error: `Rate "${k}" must be a positive number.` }
+      }
+      if (!/^[A-Z]{3,4}->[A-Z]{3,4}$/.test(k)) {
+        return { ok: false, error: `Bad key "${k}" — use FROM->TO format like USD->GBP.` }
+      }
+      rates[k] = v
+    }
+  } catch {
+    return { ok: false, error: "Rates payload is not valid JSON." }
+  }
+  return applyPatch({ fx_rates: rates as Update["fx_rates"] })
+}
+
 // ─── Tax ────────────────────────────────────────────────────────────────────
 const TaxSchema = z.object({
   tax_jurisdiction: z.enum(["US", "UK", "CA", "AU", "SG", "AE", "OTHER"]),

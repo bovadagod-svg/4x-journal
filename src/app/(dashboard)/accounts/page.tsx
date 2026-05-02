@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getUserAccounts, getAccountSparks } from "@/lib/queries/accounts"
 import { AccountCard, AddAccountButton, type AccountConnection } from "@/components/accounts/account-card"
 import { AllocationBar } from "@/components/accounts/allocation-bar"
-import { formatUSD } from "@/lib/finance"
+import { formatMoney, parseFxRates, sumInDisplayCurrency } from "@/lib/money"
 
 export default async function AccountsPage() {
   const m = SECTION_META.accounts
@@ -55,20 +55,61 @@ export default async function AccountsPage() {
   // 7-day sparkline data
   const sparks = await getAccountSparks(accounts.map((a) => a.id))
 
-  // Top KPIs
-  const totalEquity = accounts.reduce((s, a) => s + Number(a.equity ?? 0), 0)
-  const totalBalance = accounts.reduce((s, a) => s + Number(a.balance ?? 0), 0)
+  // Display-currency context for aggregates.
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: settingsRow } = user
+    ? await supabase
+        .from("user_settings")
+        .select("display_currency, fx_rates")
+        .eq("user_id", user.id)
+        .maybeSingle()
+    : { data: null }
+  const displayCurrency = settingsRow?.display_currency ?? "USD"
+  const fxRates = parseFxRates(settingsRow?.fx_rates)
+
+  // Top KPIs — convert per-account values into displayCurrency before summing.
+  // Sparkline-derived deltas (7d net) inherit each account's currency too —
+  // each delta is in that account's native currency so we convert it the same way.
+  const equityRows = accounts.map((a) => ({
+    amount: Number(a.equity ?? 0),
+    currency: a.currency || "USD",
+  }))
+  const balanceRows = accounts.map((a) => ({
+    amount: Number(a.balance ?? 0),
+    currency: a.currency || "USD",
+  }))
+  const sevenDayRows = accounts.map((a) => {
+    const series = sparks.get(a.id) ?? []
+    return {
+      amount: series.length >= 2 ? series[series.length - 1] - series[0] : 0,
+      currency: a.currency || "USD",
+    }
+  })
+  const fundedRows = accounts
+    .filter((a) => a.status === "funded")
+    .map((a) => ({ amount: Number(a.balance ?? 0), currency: a.currency || "USD" }))
+
+  const equitySum = sumInDisplayCurrency(equityRows, displayCurrency, fxRates)
+  const balanceSum = sumInDisplayCurrency(balanceRows, displayCurrency, fxRates)
+  const sevenDaySum = sumInDisplayCurrency(sevenDayRows, displayCurrency, fxRates)
+  const fundedSum = sumInDisplayCurrency(fundedRows, displayCurrency, fxRates)
+
+  const totalEquity = equitySum.total
+  const totalBalance = balanceSum.total
   const totalOpenPnL = totalEquity - totalBalance
+  const netSevenDay = sevenDaySum.total
+  const netSevenDayPct = totalBalance - netSevenDay > 0
+    ? (netSevenDay / (totalBalance - netSevenDay)) * 100
+    : 0
+  const missingRates = Array.from(new Set([
+    ...equitySum.missingRates,
+    ...balanceSum.missingRates,
+    ...sevenDaySum.missingRates,
+    ...fundedSum.missingRates,
+  ]))
+
   const liveCount = accounts.filter((a) => a.status === "live" || a.status === "funded").length
   const fundedCount = accounts.filter((a) => a.status === "funded").length
-
-  // 7-day net: sum across all sparks (current - 7d ago)
-  const netSevenDay = accounts.reduce((s, a) => {
-    const series = sparks.get(a.id) ?? []
-    if (series.length < 2) return s
-    return s + (series[series.length - 1] - series[0])
-  }, 0)
-  const netSevenDayPct = totalBalance > 0 ? (netSevenDay / (totalBalance - netSevenDay)) * 100 : 0
 
   return (
     <>
@@ -83,21 +124,27 @@ export default async function AccountsPage() {
         <div className="card" style={{ padding: "16px 18px", background: "linear-gradient(135deg, rgba(67, 18, 160, 0.18), rgba(67, 18, 160, 0))" }}>
           <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Equity</div>
           <div className="tnum" style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginTop: 2 }}>
-            {formatUSD(totalEquity)}
+            {formatMoney(totalEquity, displayCurrency)}
           </div>
           <div className="tnum" style={{ fontSize: 12, color: netSevenDay >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)", marginTop: 2 }}>
-            {netSevenDay >= 0 ? "▲" : "▼"} {formatUSD(netSevenDay, { signed: true })} ({netSevenDayPct >= 0 ? "+" : ""}{netSevenDayPct.toFixed(2)}%) <span style={{ color: "var(--c-fg-dim)" }}>· 7d</span>
+            {netSevenDay >= 0 ? "▲" : "▼"} {formatMoney(netSevenDay, displayCurrency, { signed: true })} ({netSevenDayPct >= 0 ? "+" : ""}{netSevenDayPct.toFixed(2)}%) <span style={{ color: "var(--c-fg-dim)" }}>· 7d</span>
           </div>
+          {missingRates.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 10.5, color: "var(--c-amber)" }}>
+              Missing FX rate{missingRates.length === 1 ? "" : "s"}: {missingRates.join(", ")} → {displayCurrency}.{" "}
+              <a href="/settings?tab=fx_rates" style={{ color: "var(--c-amber)", textDecoration: "underline" }}>Set rates</a>
+            </div>
+          )}
         </div>
         <Kpi
           label="Open P&L"
-          value={Math.abs(totalOpenPnL) > 0.01 ? formatUSD(totalOpenPnL, { signed: true }) : "—"}
+          value={Math.abs(totalOpenPnL) > 0.01 ? formatMoney(totalOpenPnL, displayCurrency, { signed: true }) : "—"}
           sub="across all live positions"
           color={totalOpenPnL > 0 ? "var(--c-green-bright)" : totalOpenPnL < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)"}
         />
         <Kpi
           label="Funded Capital"
-          value={formatUSD(accounts.filter((a) => a.status === "funded").reduce((s, a) => s + Number(a.balance ?? 0), 0))}
+          value={formatMoney(fundedSum.total, displayCurrency)}
           sub={`${fundedCount} funded · ${accounts.filter((a) => a.status === "challenge").length} in challenge`}
         />
         <Kpi

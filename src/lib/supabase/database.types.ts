@@ -523,6 +523,7 @@ export type Database = {
           display_name: string | null
           email_digest: string
           empty_state: boolean
+          fx_rates: Json
           handle: string | null
           journal_timezone_mode: string
           kelly_fraction: number
@@ -571,6 +572,7 @@ export type Database = {
           display_name?: string | null
           email_digest?: string
           empty_state?: boolean
+          fx_rates?: Json
           handle?: string | null
           journal_timezone_mode?: string
           kelly_fraction?: number
@@ -619,6 +621,7 @@ export type Database = {
           display_name?: string | null
           email_digest?: string
           empty_state?: boolean
+          fx_rates?: Json
           handle?: string | null
           journal_timezone_mode?: string
           kelly_fraction?: number

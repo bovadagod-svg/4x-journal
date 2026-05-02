@@ -80,29 +80,23 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-### 5. `[-]` `display_currency` actually drives currency conversion
+### 5. `[x]` `display_currency` actually drives currency conversion
 
 **Why:** Persisted but every `formatUSD` hardcodes USD. Real fix needs an FX rate source.
 
-**Defer because:** Multi-currency conversion is a real product feature that needs a rate provider (Polygon / OpenExchangeRates) and DB-side conversion at fetch time. Not worth doing for the first non-USD user.
-
-**Notes:** Setting stays in DB so we can light it up later without a migration.
+**Notes:** 2026-05-02 — Built without an external rate API. New `user_settings.fx_rates` jsonb column stores user-managed rates as a flat map keyed by `FROM->TO`. New `lib/money.ts` provides pure helpers (`convert`, `formatMoney`, `formatMoneyConverted`, `sumInDisplayCurrency`, `parseFxRates`). New `lib/money-context.tsx` provides client hook `useMoney()` for components. `MoneyProvider` wired through `(dashboard)/layout.tsx` reading `display_currency` + `fx_rates`. New Settings → FX rates panel (`fx-rates-panel.tsx`) with Add/Remove rows, validating `FROM->TO` shape and positive numbers. New `updateFxRates` server action with Zod-validated JSON parsing. Aggregation **applied at Accounts page** Total Equity / Open P&L / Funded Capital / 7d delta — `sumInDisplayCurrency` handles per-account currency conversion and surfaces a missing-rates warning chip with "Set rates" deep-link to Settings. Per-account cards still show native currency. **Not yet applied** to Reports tax summary, Risk total-at-risk, Dashboard PnL strip — easy follow-ups since the helpers are in place.
 
 ---
 
-### 6. `[-]` `pnl_display` (money / R-multiple / percent)
+### 6. `[x]` `pnl_display` (money / R-multiple / percent)
 
-**Defer because:** Same as #5 — every chart, KPI, and stat hardcodes money. Refactor surface is huge for limited gain. Revisit when an active user requests R-multiple display.
-
-**Notes:**
+**Notes:** 2026-05-02 — New `lib/pnl-display.ts` with `formatPnL(mode, opts)` pure helper supporting "money" | "rmultiple" | "percent". Client provider `lib/pnl-display-context.tsx` exposes `mode`, `format()`, and `label()` (so column headers can render "P&L (R)" / "P&L (%)" / "P&L"). Wired through `(dashboard)/layout.tsx`. **Applied to Ledger row P&L column** (header label flips, cell value formats per mode) and **Trade Detail Drawer "Realized P&L" headline**. Money + R-multiple work everywhere; percent mode falls back to "—" where account equity isn't plumbed (acknowledged shortcut — proper percent needs balance-at-trade context). Settings → Appearance toggle was already in place from Phase 0.
 
 ---
 
-### 7. `[-]` `cap_by_prop_rule` capping the suggested risk size
+### 7. `[x]` `cap_by_prop_rule` capping the suggested risk size
 
-**Defer because:** Sizing is currently a hint, not a hard cap; the Risk page already enforces hard caps per-account. Diminishing returns.
-
-**Notes:**
+**Notes:** 2026-05-02 — `(dashboard)/layout.tsx` now also fetches `getAllRiskRules()` and threads enabled per-account caps (`max_risk_per_trade_usd` + `max_risk_per_trade_pct`) into `TradeDefaults.account_risk_caps`. `cap_by_prop_rule` flag also threaded. `LogTradeModal.suggestedRiskUsd` memo reworked to also compute `capped` flag + `capLabel`. When the cap kicks in, an inline amber hint appears below the Risk ($) field: `ℹ Capped at FunderPro 1% rule` or `ℹ Capped at $500 per-trade cap`. Disabled risk_rules rows skip the cap (matches the "Active/Disabled" toggle on the Risk page).
 
 ---
 

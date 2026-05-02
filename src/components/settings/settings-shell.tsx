@@ -11,6 +11,7 @@ export type SettingsTabId =
   | "behavior"
   | "journal"
   | "tax"
+  | "fx_rates"
   | "integrations"
   | "data"
   | "brokers"
@@ -42,6 +43,7 @@ const NAV: Item[] = [
   { id: "integrations", label: "Integrations", icon: "lightning" },
   { group: "Admin" },
   { id: "tax", label: "Tax", icon: "info" },
+  { id: "fx_rates", label: "FX rates", icon: "external", hint: "Currency conversion rates for aggregate displays" },
   { id: "data", label: "Data & danger zone", icon: "flag", warn: true },
 ]
 

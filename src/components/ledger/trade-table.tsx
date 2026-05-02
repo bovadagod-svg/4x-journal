@@ -5,6 +5,7 @@ import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { useTradeDetailDrawer } from "@/components/trades/trade-detail-drawer-context"
+import { usePnLDisplay } from "@/lib/pnl-display-context"
 import { TradeRowActions } from "@/components/trades/trade-row-actions"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 
@@ -54,6 +55,7 @@ export function TradeTable({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState<string | null>(null)
   const tradeDrawer = useTradeDetailDrawer()
+  const pnlDisplay = usePnLDisplay()
 
   const sorted = useMemo(() => {
     const dir = sort.dir === "asc" ? 1 : -1
@@ -127,7 +129,7 @@ export function TradeTable({
               <SortableTh col="setup" sort={sort} onClick={() => toggleSort("setup")}>Setup</SortableTh>
               <SortableTh col="size" sort={sort} onClick={() => toggleSort("size")} align="right">Size</SortableTh>
               <SortableTh col="r" sort={sort} onClick={() => toggleSort("r")} align="right">R</SortableTh>
-              <SortableTh col="pnl" sort={sort} onClick={() => toggleSort("pnl")} align="right">P&L</SortableTh>
+              <SortableTh col="pnl" sort={sort} onClick={() => toggleSort("pnl")} align="right">{pnlDisplay.label("P&L")}</SortableTh>
               <SortableTh col="result" sort={sort} onClick={() => toggleSort("result")}>Result</SortableTh>
               <SortableTh col="mood" sort={sort} onClick={() => toggleSort("mood")}>Mood</SortableTh>
               <SortableTh col="rules" sort={sort} onClick={() => toggleSort("rules")}>Rules</SortableTh>
@@ -228,7 +230,12 @@ export function TradeTable({
                         color: pnl > 0 ? "var(--c-green-bright)" : pnl < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)",
                       }}
                     >
-                      {t.pnl != null ? formatUSD(pnl, { signed: true }) : "—"}
+                      {pnlDisplay.format({
+                        pnl: t.pnl != null ? pnl : null,
+                        r: t.r != null ? Number(t.r) : null,
+                        equity: null, // per-trade equity at fill is not stored — % mode falls back to "—"
+                        signed: true,
+                      })}
                     </td>
                     <td style={{ padding: "11px 12px" }}>
                       <ResultPill result={t.result} />

@@ -50,14 +50,45 @@ export function LogTradeModal({
     }
   }, [open, defaults.sizing_method, defaults.default_fixed_lots, defaultAccountId])
 
-  // Suggested risk dollars from user's default % × selected account's equity
-  const suggestedRiskUsd = useMemo(() => {
-    if (defaults.sizing_method !== "fixed-risk") return null
+  // Suggested risk dollars from user's default % × selected account's equity,
+  // optionally capped by the active prop-firm rules on that account.
+  const sizing = useMemo(() => {
+    if (defaults.sizing_method !== "fixed-risk") return { suggested: null as number | null, capped: false, capLabel: null as string | null }
     const acc = accounts.find((a) => a.id === accountId)
-    if (!acc) return null
-    const r = (Number(acc.equity) || 0) * (defaults.default_risk_pct / 100)
-    return r > 0 ? Math.round(r * 100) / 100 : null
-  }, [accounts, accountId, defaults.sizing_method, defaults.default_risk_pct])
+    if (!acc) return { suggested: null, capped: false, capLabel: null }
+    const equity = Number(acc.equity) || 0
+    const desired = equity * (defaults.default_risk_pct / 100)
+    if (desired <= 0) return { suggested: null, capped: false, capLabel: null }
+
+    // Capping logic: when cap_by_prop_rule is on and the account has rules,
+    // take the min of desired vs. each cap.
+    let final = desired
+    let capLabel: string | null = null
+    if (defaults.cap_by_prop_rule) {
+      const cap = defaults.account_risk_caps[accountId]
+      if (cap) {
+        if (cap.max_risk_per_trade_usd != null && cap.max_risk_per_trade_usd < final) {
+          final = cap.max_risk_per_trade_usd
+          capLabel = `capped at $${cap.max_risk_per_trade_usd.toFixed(0)} per-trade cap`
+        }
+        if (cap.max_risk_per_trade_pct != null) {
+          const usdCap = equity * (cap.max_risk_per_trade_pct / 100)
+          if (usdCap < final) {
+            final = usdCap
+            capLabel = `capped at ${cap.max_risk_per_trade_pct}% rule`
+          }
+        }
+      }
+    }
+
+    return {
+      suggested: Math.round(final * 100) / 100,
+      capped: capLabel != null,
+      capLabel,
+    }
+  }, [accounts, accountId, defaults.sizing_method, defaults.default_risk_pct, defaults.cap_by_prop_rule, defaults.account_risk_caps])
+
+  const suggestedRiskUsd = sizing.suggested
 
   // Close on success
   useEffect(() => {
@@ -263,6 +294,11 @@ export function LogTradeModal({
                 placeholder={suggestedRiskUsd != null ? `${defaults.default_risk_pct}% of equity` : "200"}
                 style={priceInput}
               />
+              {sizing.capped && sizing.capLabel && (
+                <span style={{ fontSize: 10.5, color: "var(--c-amber)", marginTop: 2 }}>
+                  <Icon name="info" size={9} /> {sizing.capLabel}
+                </span>
+              )}
             </Field>
             {status === "closed" && (
               <Field label="Exit price">
