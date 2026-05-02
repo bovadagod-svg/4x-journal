@@ -34,7 +34,9 @@ export function TopBar() {
         }}>
           <span style={{ color: "var(--c-fg-dim)" }}>Workspace</span>
           <Icon name="chevronRight" size={12} color="var(--c-fg-dim)" />
-          <span style={{ color: "var(--c-fg)" }}>{meta?.title ?? id}</span>
+          <span style={{ color: "var(--c-fg-muted)" }}>{meta?.title ?? id}</span>
+          <Icon name="chevronRight" size={12} color="var(--c-fg-dim)" />
+          <span style={{ color: "var(--c-fg)" }}>Overview</span>
         </div>
         <div style={{
           display: "flex", alignItems: "center", gap: 6,

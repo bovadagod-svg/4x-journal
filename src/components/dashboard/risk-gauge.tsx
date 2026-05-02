@@ -3,6 +3,7 @@ import { formatUSD } from "@/lib/finance"
 import { getAllRiskRules, getRiskUsage } from "@/lib/risk"
 import { getUserAccounts } from "@/lib/queries/accounts"
 import { getCurrentScope } from "@/lib/queries/scope"
+import { Donut } from "@/components/charts/donut"
 
 export async function RiskGauge() {
   const [scope, accounts, rules] = await Promise.all([
@@ -29,45 +30,64 @@ export async function RiskGauge() {
     ? Math.min(100, (usage.dailyLossUsedUsd / usage.dailyLossLimitUsd!) * 100)
     : 0
   const tone = pct >= 80 ? "red" : pct >= 50 ? "amber" : "green"
-  const barColor = tone === "red" ? "var(--c-red-bright)" : tone === "amber" ? "var(--c-amber)" : "var(--c-green-bright)"
+  const ringColor = tone === "red" ? "var(--c-red-bright)" : tone === "amber" ? "var(--c-amber)" : "var(--c-green-bright)"
+  const chipClass = tone === "red" ? "chip chip-red" : tone === "amber" ? "chip chip-amber" : "chip chip-green"
+  const chipLabel = tone === "red" ? "Hard stop" : tone === "amber" ? "Caution" : "Safe"
 
   return (
-    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+    <div className="card">
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, gap: 10 }}>
         <div>
-          <h3 className="card-title">Risk usage</h3>
+          <h3 className="card-title">Risk Manager</h3>
           <p className="card-subtitle">
-            {targetAccount.broker} · {targetAccount.label}
-            {rule?.enabled === false && <span style={{ color: "var(--c-amber)" }}> · rules disabled</span>}
+            {rule?.daily_loss_limit_pct != null
+              ? `Daily loss limit · ${rule.daily_loss_limit_pct}%`
+              : "No limit set"}
+            {rule?.enabled === false && <span style={{ color: "var(--c-amber)" }}> · disabled</span>}
           </p>
         </div>
-        <Link href="/risk" className="btn" style={{ fontSize: 12 }}>Configure</Link>
+        {hasLimit && <span className={chipClass}>{chipLabel}</span>}
       </div>
 
       {!hasLimit ? (
-        <div style={{ fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>
-          No daily loss limit set. <Link href="/risk" style={{ color: "var(--c-accent-bright)" }}>Add rules →</Link>
+        <div style={{ paddingTop: 6, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>
+          {targetAccount.broker} · {targetAccount.label} has no rules configured.{" "}
+          <Link href="/risk" style={{ color: "var(--c-accent-bright)" }}>Add rules →</Link>
         </div>
       ) : (
-        <>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 600, color: barColor }}>
-              {formatUSD(usage.dailyLossUsedUsd)}
-            </span>
-            <span style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>
-              of {formatUSD(usage.dailyLossLimitUsd!)} limit · {Math.round(pct)}% used
-            </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 10 }}>
+          <Donut
+            value={pct}
+            size={130}
+            thickness={10}
+            color={ringColor}
+            label={`${Math.round(pct)}%`}
+            sublabel="used today"
+          />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            <div>
+              <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Loss today</div>
+              <div className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600, color: "var(--c-red-bright)" }}>
+                −{formatUSD(usage.dailyLossUsedUsd)}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Buffer remaining</div>
+              <div className="tnum" style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600 }}>
+                {formatUSD(Math.max(0, (usage.dailyLossLimitUsd ?? 0) - usage.dailyLossUsedUsd))}
+              </div>
+            </div>
+            <div style={{
+              fontSize: 10.5, color: "var(--c-fg-dim)", marginTop: 4, paddingTop: 6,
+              borderTop: "1px solid var(--c-border)",
+            }}>
+              {usage.maxOpenPositions != null
+                ? `${usage.openPositions} of ${usage.maxOpenPositions} open positions used.`
+                : `${usage.openPositions} open position${usage.openPositions === 1 ? "" : "s"}.`}
+              {" "}<Link href="/risk" style={{ color: "var(--c-fg-muted)" }}>Configure →</Link>
+            </div>
           </div>
-
-          <div style={{ width: "100%", height: 6, background: "var(--c-bg-elev-3)", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.2s" }} />
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "var(--c-fg-muted)" }}>
-            <span>{usage.openPositions} open{usage.maxOpenPositions != null ? ` / ${usage.maxOpenPositions} max` : ""}</span>
-            <span>{tone === "red" ? "Hard limit reached" : tone === "amber" ? "Use caution" : "Safe zone"}</span>
-          </div>
-        </>
+        </div>
       )}
     </div>
   )

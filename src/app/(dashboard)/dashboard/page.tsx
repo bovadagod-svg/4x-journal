@@ -4,6 +4,9 @@ import { getOpenTrades, getJournalEntries, getTodayPnL, getUserTrades } from "@/
 import { getEquityCurve, getOverallStats } from "@/lib/queries/analytics"
 import { getPlaybooksWithStats } from "@/lib/queries/playbooks"
 import { currenciesFromWatchlist, getUpcomingEvents, getWatchlist } from "@/lib/queries/watchlist"
+import { TickerTape } from "@/components/dashboard/ticker-tape"
+import { CoachNudge } from "@/components/dashboard/coach-nudge"
+import { ScopeBanner } from "@/components/dashboard/scope-banner"
 import { PnLStrip } from "@/components/dashboard/pnl-strip"
 import { OpenPositions } from "@/components/dashboard/open-positions"
 import { JournalFeed } from "@/components/dashboard/journal-feed"
@@ -36,6 +39,12 @@ export default async function DashboardPage() {
   return (
     <>
       <SectionHeader title={m.title} subtitle={m.subtitle} actions={<LogTradeButton />} />
+
+      <ScopeBanner />
+
+      <TickerTape />
+
+      <CoachNudge stats={stats} />
 
       <PnLStrip today={today} />
 
