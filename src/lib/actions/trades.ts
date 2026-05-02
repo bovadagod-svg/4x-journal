@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { computePnL, computeR } from "@/lib/finance"
+import { evaluateTrade } from "@/lib/risk"
 
 const TradeSchema = z.object({
   account_id: z.string().uuid({ error: "Pick an account." }),
@@ -56,6 +57,19 @@ export async function createTrade(
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: "Not signed in." }
+
+  // Pre-flight risk check — block obvious rule breaks before insert.
+  const violations = await evaluateTrade({
+    accountId: v.account_id,
+    riskAmount: v.risk_amount ?? null,
+    status,
+  })
+  if (violations.length > 0) {
+    return {
+      ok: false,
+      error: `Risk rule${violations.length > 1 ? "s" : ""} blocked this trade: ${violations.map((x) => x.message).join(" ")}`,
+    }
+  }
 
   const { data: trade, error } = await supabase
     .from("trades")

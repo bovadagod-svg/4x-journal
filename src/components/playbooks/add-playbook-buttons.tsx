@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Icon } from "@/components/icons"
 import { PlaybookFormModal } from "./playbook-form-modal"
-import { PLAYBOOK_TEMPLATES } from "@/lib/queries/playbooks"
+import { PLAYBOOK_TEMPLATES } from "@/lib/playbook-templates"
 
 export function AddPlaybookButton() {
   const [open, setOpen] = useState(false)

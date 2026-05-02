@@ -161,6 +161,53 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_rules: {
+        Row: {
+          account_id: string
+          created_at: string
+          daily_loss_limit_pct: number | null
+          daily_loss_limit_usd: number | null
+          enabled: boolean
+          id: string
+          max_open_positions: number | null
+          max_risk_per_trade_pct: number | null
+          max_risk_per_trade_usd: number | null
+          prop_firm_template: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          daily_loss_limit_pct?: number | null
+          daily_loss_limit_usd?: number | null
+          enabled?: boolean
+          id?: string
+          max_open_positions?: number | null
+          max_risk_per_trade_pct?: number | null
+          max_risk_per_trade_usd?: number | null
+          prop_firm_template?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          daily_loss_limit_pct?: number | null
+          daily_loss_limit_usd?: number | null
+          enabled?: boolean
+          id?: string
+          max_open_positions?: number | null
+          max_risk_per_trade_pct?: number | null
+          max_risk_per_trade_usd?: number | null
+          prop_firm_template?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          { foreignKeyName: "risk_rules_account_id_fkey"; columns: ["account_id"]; isOneToOne: true; referencedRelation: "accounts"; referencedColumns: ["id"] }
+        ]
+      }
       trades: {
         Row: {
           account_id: string
