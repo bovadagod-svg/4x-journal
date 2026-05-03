@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { CumulativeCurve } from "./cumulative-curve"
@@ -20,9 +20,6 @@ import { MonteCarloCard } from "./monte-carlo-card"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 import type { TradeFill } from "@/lib/queries/trade-fills"
 
-type Range = "7D" | "30D" | "90D" | "All"
-const RANGES: Range[] = ["7D", "30D", "90D", "All"]
-
 export function AnalyticsView({
   trades,
   entriesByTrade,
@@ -38,42 +35,20 @@ export function AnalyticsView({
   fillsByTrade: Map<string, TradeFill[]>
   simStartBalance: number
 }) {
-  const [range, setRange] = useState<Range>("30D")
-
+  // The page-level RangeFilterBar drives the date window via URL params,
+  // so the `trades` prop is already scoped to the user's chosen range.
   // Closed trades only — analytics are meaningless for open positions.
-  const closed = useMemo(() => trades.filter((t) => t.status === "closed"), [trades])
-
-  const filtered = useMemo(() => {
-    if (range === "All") return closed
-    const days = range === "7D" ? 7 : range === "30D" ? 30 : 90
-    const cutoff = Date.now() - days * 86_400_000
-    return closed.filter((t) => t.closed_at && new Date(t.closed_at).getTime() >= cutoff)
-  }, [closed, range])
-
+  const filtered = useMemo(() => trades.filter((t) => t.status === "closed"), [trades])
   const stats = useMemo(() => agg(filtered), [filtered])
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div className="card-subtitle" style={{ marginLeft: 4 }}>
-          {filtered.length} closed trade{filtered.length === 1 ? "" : "s"} · {range === "All" ? "all-time" : `last ${range}`}
-        </div>
-        <div className="tab-row" style={{ background: "var(--c-bg-elev-2)", padding: 3, borderRadius: 8 }}>
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              className={`tab ${r === range ? "active" : ""}`}
-              onClick={() => setRange(r)}
-              style={{ padding: "5px 12px", fontSize: 12 }}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+      <div className="card-subtitle" style={{ marginLeft: 4 }}>
+        {filtered.length} closed trade{filtered.length === 1 ? "" : "s"} in this range
       </div>
 
       {/* KPIs */}
-      <KPIGrid stats={stats} range={range} />
+      <KPIGrid stats={stats} />
 
       {/* Cumulative curve */}
       <CumulativeCurve values={filtered.length >= 2 ? cumulate(filtered) : []} />
@@ -111,11 +86,11 @@ export function AnalyticsView({
       {/* Rule-break impact (uses journal entries) */}
       <RuleBreakImpact trades={filtered} entriesByTrade={entriesByTrade} />
 
-      {/* Monthly comparison — uses ALL closed (ignores range filter intentionally) */}
-      <MonthlyComparison trades={closed} />
+      {/* Monthly comparison — respects the range; widen to All for lifetime view */}
+      <MonthlyComparison trades={filtered} />
 
-      {/* Calendar heatmap — last 12 months across the entire account */}
-      <CalendarHeatmap trades={closed} />
+      {/* Calendar heatmap — respects the range; widen to All for lifetime view */}
+      <CalendarHeatmap trades={filtered} />
 
       {/* Pair + Setup breakdowns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
@@ -145,7 +120,7 @@ export function AnalyticsView({
 }
 
 // ── KPI grid ──────────────────────────────────────────────────────────────
-function KPIGrid({ stats, range }: { stats: AggStats; range: Range }) {
+function KPIGrid({ stats }: { stats: AggStats }) {
   const sharpe =
     stats.count >= 5 && stats.rs.length > 0
       ? (() => {
@@ -158,7 +133,7 @@ function KPIGrid({ stats, range }: { stats: AggStats; range: Range }) {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-      <KPI label="Net P&L" value={formatUSD(stats.pnl, { signed: true })} sub={range === "All" ? "lifetime" : "period"} color={stats.pnl >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
+      <KPI label="Net P&L" value={formatUSD(stats.pnl, { signed: true })} sub="in this range" color={stats.pnl >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
       <KPI label="Win Rate" value={stats.count > 0 ? `${Math.round(stats.winRate)}%` : "—"} sub={stats.count > 0 ? `${stats.wins}W / ${stats.losses}L` : "no trades"} />
       <KPI label="Profit Factor" value={stats.count > 0 ? stats.pf.toFixed(2) : "—"} sub={stats.pf >= 1.5 ? "healthy" : stats.count === 0 ? "—" : "below target"} tone={stats.pf >= 1.5 ? "good" : stats.count === 0 ? undefined : "bad"} color="var(--c-purple-bright)" />
       <KPI label="Expectancy" value={stats.count > 0 ? formatUSD(stats.expectancy, { signed: true }) : "—"} sub="per trade" />

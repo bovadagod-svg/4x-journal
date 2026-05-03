@@ -7,12 +7,22 @@ import { getFillsForTrades } from "@/lib/queries/trade-fills"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { AnalyticsView } from "@/components/analytics/analytics-view"
+import { RangeFilterBar } from "@/components/shell/range-filter-bar"
+import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
 
-export default async function AnalyticsPage() {
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>
+}) {
   const m = SECTION_META.analytics
+  const params = await searchParams
+  const range = parseRangeSelection({ range: params.range, from: params.from, to: params.to })
+  const { from: fromIso, to: toIso } = rangeBoundsIso(range)
+
   const [trades, entries, playbooks, accounts] = await Promise.all([
-    getUserTrades({ limit: 5000 }),
-    getJournalEntries({ limit: 5000 }),
+    getUserTrades({ limit: 5000, from: fromIso, to: toIso }),
+    getJournalEntries({ limit: 5000, from: fromIso, to: toIso }),
     getUserPlaybooks(),
     getUserAccounts(),
   ])
@@ -21,11 +31,15 @@ export default async function AnalyticsPage() {
   if (closedCount < 5) {
     return (
       <>
-        <SectionHeader title={m.title} subtitle={m.subtitle} actions={<LogTradeButton />} />
+        <SectionHeader
+          title={m.title}
+          subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
+          actions={<><RangeFilterBar /><LogTradeButton /></>}
+        />
         <SectionStub
           icon={m.icon}
-          title={`Analytics unlock at 5 closed trades — you have ${closedCount}`}
-          description="Win rate, profit factor, expectancy, equity curve, per-pair / per-setup / per-account breakdowns, day-of-week heatmap, R distribution, win/loss streaks, and Coach AI insights all turn on once we have a sample."
+          title={`Analytics unlock at 5 closed trades in this range — you have ${closedCount}`}
+          description="Try widening the range filter (or switching to All) to surface a larger sample. Win rate, profit factor, expectancy, equity curve, per-pair / per-setup / per-account breakdowns, day-of-week heatmap, R distribution, win/loss streaks, and Coach AI insights all turn on once we have a sample."
         />
       </>
     )
@@ -55,11 +69,14 @@ export default async function AnalyticsPage() {
     <>
       <SectionHeader
         title={m.title}
-        subtitle={m.subtitle}
+        subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
         actions={
-          <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
-            <Icon name="external" size={13} /> <span>Export PDF</span>
-          </button>
+          <>
+            <RangeFilterBar />
+            <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
+              <Icon name="external" size={13} /> <span>Export PDF</span>
+            </button>
+          </>
         }
       />
 

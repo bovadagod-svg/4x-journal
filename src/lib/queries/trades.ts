@@ -64,14 +64,29 @@ async function resolveScope(provided: string | null | undefined): Promise<string
   return provided ?? "all"
 }
 
-export async function getUserTrades(opts: { accountId?: string | null; limit?: number; from?: string | null } = {}) {
+export async function getUserTrades(opts: {
+  accountId?: string | null
+  limit?: number
+  from?: string | null
+  to?: string | null
+} = {}) {
   const scope = await resolveScope(opts.accountId)
   const supabase = await createClient()
   let q = supabase.from("trades").select("*").order("opened_at", { ascending: false })
   if (scope !== "all") q = q.eq("account_id", scope)
-  // When a range is specified, include trades opened OR closed in the window —
-  // open trades that have run for a while still belong on a "last 7 days" view.
-  if (opts.from) q = q.or(`opened_at.gte.${opts.from},closed_at.gte.${opts.from}`)
+  // Range semantics: a trade belongs to the window when its closed_at falls
+  // inside (for closed trades) OR when its opened_at falls inside (for trades
+  // still open or trades closed outside the window but opened inside). We
+  // express this as an OR so partials and longer-held positions both surface.
+  if (opts.from && opts.to) {
+    q = q.or(
+      `and(closed_at.gte.${opts.from},closed_at.lte.${opts.to}),and(opened_at.gte.${opts.from},opened_at.lte.${opts.to})`,
+    )
+  } else if (opts.from) {
+    q = q.or(`opened_at.gte.${opts.from},closed_at.gte.${opts.from}`)
+  } else if (opts.to) {
+    q = q.or(`opened_at.lte.${opts.to},closed_at.lte.${opts.to}`)
+  }
   if (opts.limit) q = q.limit(opts.limit)
   const { data } = await q
   return data ?? []
@@ -86,11 +101,18 @@ export async function getOpenTrades(opts: { accountId?: string | null } = {}) {
   return data ?? []
 }
 
-export async function getJournalEntries(opts: { accountId?: string | null; limit?: number } = {}) {
+export async function getJournalEntries(opts: {
+  accountId?: string | null
+  limit?: number
+  from?: string | null
+  to?: string | null
+} = {}) {
   const scope = await resolveScope(opts.accountId)
   const supabase = await createClient()
   let q = supabase.from("journal_entries").select("*").order("created_at", { ascending: false })
   if (scope !== "all") q = q.eq("account_id", scope)
+  if (opts.from) q = q.gte("created_at", opts.from)
+  if (opts.to) q = q.lte("created_at", opts.to)
   if (opts.limit) q = q.limit(opts.limit)
   const { data } = await q
   return data ?? []

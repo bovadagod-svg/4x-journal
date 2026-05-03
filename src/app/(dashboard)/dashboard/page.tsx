@@ -25,31 +25,31 @@ import { MoodCheckIn } from "@/components/dashboard/mood-checkin"
 import { PipStatsCard } from "@/components/dashboard/pip-stats-card"
 import { StreakCard } from "@/components/dashboard/streak-card"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
-import { RangeTabs } from "@/components/shell/range-tabs"
-import { parseRange, rangeFromIso, rangeLabel } from "@/lib/range"
+import { RangeFilterBar } from "@/components/shell/range-filter-bar"
+import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>
 }) {
   const m = SECTION_META.dashboard
   const params = await searchParams
-  const range = parseRange(params.range)
-  const fromIso = rangeFromIso(range)
+  const range = parseRangeSelection({ range: params.range, from: params.from, to: params.to })
+  const { from: fromIso, to: toIso } = rangeBoundsIso(range)
 
   const watchlist = await getWatchlist()
   const watchCurrencies = currenciesFromWatchlist(watchlist)
 
   const [pnl, openTrades, recentEntries, recentTrades, equity, stats, pairs, playbooks, events, discipline] = await Promise.all([
-    getPnLByPeriod(),                              // today/week/month — fixed buckets, ignores range
-    getOpenTrades(),                               // current open positions — always live
-    getJournalEntries({ limit: 5 }),               // 5 most recent — always recent
-    getUserTrades({ limit: 200, from: fromIso }),  // history list — respects range
-    getEquityCurve({ from: fromIso }),             // equity curve — respects range
-    getOverallStats({ from: fromIso }),            // KPI stats + Coach AI — respects range
-    getPairPerformance({ from: fromIso }),         // analytics summary — respects range
-    getPlaybooksWithStats(),                       // overall playbook stats
+    getPnLByPeriod(),                                          // today/week/month — fixed buckets, ignores range
+    getOpenTrades(),                                           // current open positions — always live
+    getJournalEntries({ limit: 5 }),                           // 5 most recent — always recent
+    getUserTrades({ limit: 200, from: fromIso, to: toIso }),   // history list — respects range
+    getEquityCurve({ from: fromIso, to: toIso }),              // equity curve — respects range
+    getOverallStats({ from: fromIso, to: toIso }),             // KPI stats + Coach AI — respects range
+    getPairPerformance({ from: fromIso, to: toIso }),          // analytics summary — respects range
+    getPlaybooksWithStats(),                                   // overall playbook stats
     getUpcomingEvents({ currencies: watchCurrencies.length > 0 ? watchCurrencies : undefined, limit: 8 }),
     getDisciplineStats(),
   ])
@@ -59,7 +59,7 @@ export default async function DashboardPage({
       <SectionHeader
         title={m.title}
         subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
-        actions={<><RangeTabs scope="dashboard analytics" /><LogTradeButton /></>}
+        actions={<><RangeFilterBar /><LogTradeButton /></>}
       />
 
       <ScopeBanner />

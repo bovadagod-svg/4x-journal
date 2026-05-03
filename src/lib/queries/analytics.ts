@@ -31,7 +31,7 @@ type ClosedTrade = {
   closed_at: string
 }
 
-type RangeOpts = { from?: string | null }
+type RangeOpts = { from?: string | null; to?: string | null }
 
 async function fetchClosed(opts: RangeOpts = {}): Promise<ClosedTrade[]> {
   const supabase = await createClient()
@@ -43,6 +43,7 @@ async function fetchClosed(opts: RangeOpts = {}): Promise<ClosedTrade[]> {
     .order("closed_at", { ascending: true })
   if (scope !== "all") q = q.eq("account_id", scope)
   if (opts.from) q = q.gte("closed_at", opts.from)
+  if (opts.to) q = q.lte("closed_at", opts.to)
   const { data } = await q
   return (data ?? [])
     .filter((t): t is typeof t & { closed_at: string } => t.closed_at != null)
@@ -70,6 +71,7 @@ export async function getPairPerformance(opts: RangeOpts = {}): Promise<PairPerf
   let q = supabase.from("trades").select("pair, status, pnl, r, closed_at")
   if (scope !== "all") q = q.eq("account_id", scope)
   if (opts.from) q = q.gte("closed_at", opts.from)
+  if (opts.to) q = q.lte("closed_at", opts.to)
   const { data } = await q
 
   const byPair = new Map<string, { trades: number; closedTrades: number; wins: number; pnl: number; rSum: number }>()
@@ -106,6 +108,7 @@ export async function getOverallStats(opts: RangeOpts = {}): Promise<OverallStat
   let q = supabase.from("trades").select("status, pair, pnl, r, closed_at")
   if (scope !== "all") q = q.eq("account_id", scope)
   if (opts.from) q = q.gte("closed_at", opts.from)
+  if (opts.to) q = q.lte("closed_at", opts.to)
   const { data } = await q
   const all = data ?? []
 
