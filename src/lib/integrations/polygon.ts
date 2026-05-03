@@ -89,6 +89,54 @@ export function pairToPolygonTicker(pair: string): string | null {
   return null
 }
 
+export type TickerSnapshot = {
+  pair: string
+  price: number | null
+  prevClose: number | null
+  changePct: number | null  // 1-day %
+  ts: number | null
+}
+
+/**
+ * One-shot snapshot for a single FX pair: last close + prior daily close
+ * + % change. Built on the Aggregates endpoint so it works on the free
+ * tier (forex majors are covered).
+ *
+ * Returns price=null when Polygon doesn't carry the pair on the user's
+ * plan, so the caller can render a placeholder cell instead of erroring.
+ */
+export async function getTickerSnapshot(pair: string): Promise<TickerSnapshot> {
+  const ticker = pairToPolygonTicker(pair)
+  if (!ticker) return { pair, price: null, prevClose: null, changePct: null, ts: null }
+  // Pull a 14-day window so weekends + holidays don't leave us with < 2 bars.
+  const to = new Date()
+  const from = new Date()
+  from.setDate(from.getDate() - 14)
+  const r = await getAggregates({
+    ticker,
+    multiplier: 1,
+    timespan: "day",
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+    limit: 14,
+  })
+  if (!r.ok || r.bars.length === 0) {
+    return { pair, price: null, prevClose: null, changePct: null, ts: null }
+  }
+  const last = r.bars[r.bars.length - 1]
+  const prev = r.bars.length >= 2 ? r.bars[r.bars.length - 2] : null
+  const changePct = prev && prev.close > 0
+    ? ((last.close - prev.close) / prev.close) * 100
+    : null
+  return {
+    pair,
+    price: last.close,
+    prevClose: prev?.close ?? null,
+    changePct,
+    ts: last.ts,
+  }
+}
+
 export type MacroSnapshot = {
   ts: number
   dxy: number | null
