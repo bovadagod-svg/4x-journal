@@ -31,7 +31,9 @@ type ClosedTrade = {
   closed_at: string
 }
 
-async function fetchClosed(): Promise<ClosedTrade[]> {
+type RangeOpts = { from?: string | null }
+
+async function fetchClosed(opts: RangeOpts = {}): Promise<ClosedTrade[]> {
   const supabase = await createClient()
   const scope = await getCurrentScope()
   let q = supabase
@@ -40,6 +42,7 @@ async function fetchClosed(): Promise<ClosedTrade[]> {
     .eq("status", "closed")
     .order("closed_at", { ascending: true })
   if (scope !== "all") q = q.eq("account_id", scope)
+  if (opts.from) q = q.gte("closed_at", opts.from)
   const { data } = await q
   return (data ?? [])
     .filter((t): t is typeof t & { closed_at: string } => t.closed_at != null)
@@ -52,8 +55,8 @@ async function fetchClosed(): Promise<ClosedTrade[]> {
     }))
 }
 
-export async function getEquityCurve(): Promise<EquityPoint[]> {
-  const trades = await fetchClosed()
+export async function getEquityCurve(opts: RangeOpts = {}): Promise<EquityPoint[]> {
+  const trades = await fetchClosed(opts)
   let equity = 0
   return trades.map((t) => {
     equity += t.pnl
@@ -61,11 +64,12 @@ export async function getEquityCurve(): Promise<EquityPoint[]> {
   })
 }
 
-export async function getPairPerformance(): Promise<PairPerformance[]> {
+export async function getPairPerformance(opts: RangeOpts = {}): Promise<PairPerformance[]> {
   const supabase = await createClient()
   const scope = await getCurrentScope()
-  let q = supabase.from("trades").select("pair, status, pnl, r")
+  let q = supabase.from("trades").select("pair, status, pnl, r, closed_at")
   if (scope !== "all") q = q.eq("account_id", scope)
+  if (opts.from) q = q.gte("closed_at", opts.from)
   const { data } = await q
 
   const byPair = new Map<string, { trades: number; closedTrades: number; wins: number; pnl: number; rSum: number }>()
@@ -96,11 +100,12 @@ export async function getPairPerformance(): Promise<PairPerformance[]> {
     .sort((a, b) => b.pnl - a.pnl)
 }
 
-export async function getOverallStats(): Promise<OverallStats> {
+export async function getOverallStats(opts: RangeOpts = {}): Promise<OverallStats> {
   const supabase = await createClient()
   const scope = await getCurrentScope()
   let q = supabase.from("trades").select("status, pair, pnl, r, closed_at")
   if (scope !== "all") q = q.eq("account_id", scope)
+  if (opts.from) q = q.gte("closed_at", opts.from)
   const { data } = await q
   const all = data ?? []
 

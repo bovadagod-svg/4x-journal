@@ -64,11 +64,14 @@ async function resolveScope(provided: string | null | undefined): Promise<string
   return provided ?? "all"
 }
 
-export async function getUserTrades(opts: { accountId?: string | null; limit?: number } = {}) {
+export async function getUserTrades(opts: { accountId?: string | null; limit?: number; from?: string | null } = {}) {
   const scope = await resolveScope(opts.accountId)
   const supabase = await createClient()
   let q = supabase.from("trades").select("*").order("opened_at", { ascending: false })
   if (scope !== "all") q = q.eq("account_id", scope)
+  // When a range is specified, include trades opened OR closed in the window —
+  // open trades that have run for a while still belong on a "last 7 days" view.
+  if (opts.from) q = q.or(`opened_at.gte.${opts.from},closed_at.gte.${opts.from}`)
   if (opts.limit) q = q.limit(opts.limit)
   const { data } = await q
   return data ?? []
