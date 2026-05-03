@@ -381,11 +381,341 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ---
 
-## Recommended top-3 if you can only do a day's worth
+## 🔵 Sprint A — Capture broker data we already pay for
 
-1. **#1 + #2 + #3** (Settings enforcement) — closes the "this feels like a demo" gap on work we already started. ~2 hours total.
-2. **#9** (CSV import) — universal broker bridge. ~half day.
-3. **#12** (Mobile QA) — you'll check the app on your phone after every trade. If it's broken at 375px you'll stop using it. ~1–2 hours.
+These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more per-trade and per-account than we currently store. ~Half a day total to land all four; afterwards every analytics module gets richer data for free.
+
+### 22. `[ ]` Capture per-trade broker fields on `trade_fills`
+
+**Why:** TL returns `commission`, `swap`, `tax`, `requestPrice` (vs `avgPrice` for slippage), `orderType`, `executionType`, `magicNumber`, `comment` on every order — we drop them all. Adding them unlocks slippage analytics, true net P&L, market-vs-limit edge, and algo-vs-manual splits.
+
+**Files:**
+- Migration `trade_fills_broker_fields` adds columns: `commission` numeric, `swap` numeric, `tax` numeric, `request_price` numeric, `order_type` text, `execution_type` text, `magic_number` text, `broker_comment` text
+- `src/lib/integrations/tradelocker/client.ts` → extract these fields in `decodeRows` + `reconstructClosedTrades` and surface them on the `TLPosition` / order shape
+- `src/lib/actions/tradelocker.ts` → write them into `trade_fills` rows during the import loop
+- Regenerate `database.types.ts`
+
+**Acceptance:** Re-sync TradeLocker → fills inserted with non-null commission/swap/orderType where TL exposes them. Verify via SQL.
+
+**Effort:** ~2 hours
+
+**Notes:**
+
+---
+
+### 23. `[ ]` Capture margin / free-margin / margin-level on `accounts`
+
+**Why:** TL's `/state` endpoint returns `equity`, `marginUsed`, `freeMargin`, `marginLevel`, floating P&L, cumulative swap. We extract balance + projectedBalance + availableFunds and ignore the rest. Margin level dropping below 100% is the literal definition of margin call — surfacing it is the difference between "I got margin-called" and "I avoided it."
+
+**Files:**
+- Migration `accounts_margin_fields` — add to `accounts`: `margin_used` numeric, `free_margin` numeric, `margin_level` numeric (percent), `floating_pnl` numeric, `swap_total` numeric. (Existing `equity` column is already there — re-purpose it as the live equity reading.)
+- Update `decodeAccountState` in `client.ts` to extract them
+- Update TL importer to write them on every sync
+- Regenerate types
+
+**Acceptance:** Open an account with floating positions, hit Sync. Account row's `margin_used` + `margin_level` reflect TL's live numbers.
+
+**Effort:** ~1 hour
+
+**Notes:** Equity vs balance: balance is closed P&L only; equity = balance + floating. Most prop firms track both.
+
+---
+
+### 24. `[ ]` Surface broker fields on Trade Detail Drawer
+
+**Why:** Once #22 is in, render the new fields in the Order tab — commission line, swap line, slippage in pips (computed: `requestPrice − avgPrice` in pip units), order type chip (Market / Limit / Stop) on the header. Net P&L = gross P&L − commission − swap.
+
+**Files:**
+- `src/components/trades/trade-detail-drawer.tsx` — add a "Costs" sub-section under Order tab; add a slippage badge next to the entry price; flip the order type chip in the header
+
+**Acceptance:** Open a TL-synced trade with non-zero commission. Drawer shows it line-by-line. Slippage badge reads `+0.3p` or `−1.2p` based on direction.
+
+**Effort:** ~1 hour
+
+**Notes:** Use `slPips`/`pipsBetween` from `lib/pip.ts` for the slippage calculation.
+
+---
+
+### 25. `[ ]` Surface margin metrics on Account Card / Drawer / Risk page
+
+**Why:** Once #23 lands, these numbers are live in the DB. Add to the Account Card a small bar showing `margin_used` consumption; in the drawer Overview tab add 4 cells (Equity, Free Margin, Margin Used, Margin Level). On the Risk page, replace or augment the existing usage gauges with margin-level data.
+
+**Files:**
+- `src/components/accounts/account-card.tsx` — small margin progress bar in the footer chips area
+- `src/components/accounts/account-drawer.tsx` — Overview tab gets margin cells
+- `src/components/risk/risk-account-card.tsx` — add a margin-level gauge (4th gauge in the strip)
+
+**Acceptance:** With a TL account synced, Account Card shows a visible margin bar. Risk page gauge reads the actual margin level.
+
+**Effort:** ~1.5 hours
+
+**Notes:**
+
+---
+
+## 🔵 Sprint B — Risk math no other journal has
+
+Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator vs Edgewonk / TraderSync / TradeZella.
+
+### 26. `[ ]` Risk-of-Ruin Calculator
+
+**Why:** Most retail traders don't realize that 58% WR with +0.3R avg still has a 14% probability of 50% drawdown over 100 trades. This is the killer Coach feature.
+
+**Files (new):**
+- `src/lib/ruin.ts` — pure math: `probabilityOfRuin({ winRate, avgWinR, avgLossR, riskPerTradePct, n }): number`. Uses Monte Carlo internally (10k paths, fast enough client-side). + tests in `ruin.test.ts`
+- `src/components/analytics/risk-of-ruin-card.tsx` — Analytics page section with sliders for "what if I changed risk %"
+- Reuses `OverallStats` already passed to AnalyticsView
+
+**Acceptance:** With ≥ 30 closed trades, Analytics shows: "P(50% DD over next 100 trades) = 14%" plus stats for 25% / 75% drawdown thresholds. Slider lets user override inputs to model "what if I increased risk to 1.5%".
+
+**Effort:** ~3 hours
+
+**Notes:**
+
+---
+
+### 27. `[ ]` Monte Carlo Equity Simulator
+
+**Why:** Forward simulation. Take user's current stats, run 1000 random paths, plot median + 5th/95th bands + horizon distribution.
+
+**Files (new):**
+- `src/lib/monte-carlo.ts` — pure simulator: `simulate({ wr, avgWinR, avgLossR, riskPct, startBalance, n, paths }): number[][]`
+- `src/components/analytics/monte-carlo-card.tsx` — fan chart (median path + percentile bands as light fills) + horizon distribution bars at the right edge
+
+**Acceptance:** Card shows 1000 forward paths shaded. Sliders for `n` trades + risk %. Caption: "Median outcome at trade 100: $11,420 · 5th: $7,200 · 95th: $18,100."
+
+**Effort:** ~3 hours
+
+**Notes:** Pair with #26 on the same Analytics row.
+
+---
+
+## 🔵 Sprint C — Live data + classification (depends on Sprint A)
+
+### 28. `[ ]` Margin Call Risk Card
+
+**Why:** Once #23 captures `margin_level`, surface as a color-coded gauge with forward projection: "If your open trades all hit stop, your margin level would drop to X%."
+
+**Files (new):**
+- `src/components/dashboard/margin-call-card.tsx` — Dashboard widget
+- `src/components/risk/margin-projection.tsx` — Risk page section showing projected margin under "all stops hit" + "all targets hit" scenarios
+
+**Acceptance:** Card reads "Margin level: 487% · safe". Scenario row: "If all stops hit: 312% (still safe)." Color thresholds: green >300%, amber 150–300%, red <150%, black <100%.
+
+**Effort:** ~2 hours
+
+**Notes:**
+
+---
+
+### 29. `[ ]` Order-Type Edge Analysis
+
+**Why:** Once #22 captures `order_type`, add Analytics breakdown comparing market vs limit vs stop entries. Often the user's best trades are limit fills (patience) and worst are market fills (FOMO).
+
+**Files (new):**
+- `src/components/analytics/order-type-analysis.tsx` — compact table similar to existing `BreakdownBars`
+
+**Acceptance:** With a mix of order types in the data, the card surfaces the WR delta. Auto-narrative when the gap is ≥10pp: "Your limit fills win 67% — your market fills win 48%. Be patient."
+
+**Effort:** ~1 hour
+
+**Notes:**
+
+---
+
+## 🔵 Sprint D — Live quotes
+
+### 30. `[ ]` Live quote ticker for Watchlist + Open Positions
+
+**Why:** TL's `/trade/quotes/{instrumentId}` returns live bid/ask. Watchlist rows get real prices. Open positions show real floating P&L instead of stale entry-time snapshots.
+
+**Files (new):**
+- `src/lib/integrations/tradelocker/quotes.ts` — server action that takes a list of instrumentIds, returns `Map<symbol, { bid, ask, ts }>`
+- `src/components/dashboard/live-positions.tsx` — wraps Open Positions widget, polls every 10s for the user's open trades + computes floating P&L
+- Watchlist row enrichment
+
+**Acceptance:** Open Positions widget shows green/red number that updates every 10s. Watchlist rows show live bid + 24h change.
+
+**Effort:** ~half day
+
+**Notes:** Needs valid TL access token in cookie/server context. Refresh-token plumbing (currently we re-login each sync) becomes important.
+
+---
+
+## 🔵 Sprint E — Tax
+
+### 31. `[ ]` FIFO tax matcher (Schedule D / Form 8949)
+
+**Why:** End-of-year value. We have the data; just need the algorithm. FIFO lot matching across closed trades, short-term/long-term split (forex is mostly short-term), wash-sale flagging within 30 days. Export as IRS Form 8949 CSV.
+
+**Files (new):**
+- `src/lib/tax/fifo-matcher.ts` — pure function `matchLots(trades): Lot[]` + tests
+- `src/app/api/reports/form-8949/route.ts` — CSV export
+- Reports page: add "Form 8949 (FIFO)" tile
+
+**Acceptance:** With a year of trades, downloaded CSV has 13 columns (per IRS spec) and reconciles to the user's net P&L for the year ±$0.
+
+**Effort:** ~half day
+
+**Notes:** Forex Section 988 = ordinary income, not capital gains — so the user's `tax_fx_election` setting determines whether to generate this. For §1256 traders, generate Form 6781 instead (60/40 split).
+
+---
+
+## 🔵 Sprint F — Trade replay (needs market-data feed)
+
+### 32. `[ ]` Trade Instant Replay
+
+**Why:** Click any past trade → see the H1/M15 chart for that pair on that day with your entry, stop, target, and exit marked.
+
+**Files (new):**
+- `src/lib/integrations/polygon.ts` — Polygon.io free tier client (covers FX majors)
+- `src/components/trades/trade-replay-tab.tsx` — new tab inside Trade Detail Drawer
+- Uses TradingView Lightweight Charts (`lightweight-charts` npm) for the viz
+
+**Acceptance:** Open a closed trade from a week ago → "Replay" tab → candles for that day with entry/stop/target/exit markers. Time-step buttons: M5 / M15 / H1 / H4 / D1.
+
+**Effort:** ~1 day
+
+**Notes:** Blocked on `POLYGON_API_KEY`. Free tier covers FX majors; metals + indices need paid.
+
+---
+
+## 🔵 Sprint G — Correlation alerts
+
+### 33. `[ ]` Correlation Risk Alerts
+
+**Why:** Open positions on EUR/USD long, GBP/USD long, AUD/USD long, XAU/USD long? You don't have 4 positions — you have 1 leveraged short-USD bet.
+
+**Files (new):**
+- `src/lib/correlation.ts` — hardcoded correlation matrix for major pairs (USDJPY ↔ DXY, EURUSD ↔ DXY inverse, etc.) + tests. Eventually replaced with a rolling-correlation calc from price data.
+- `src/components/dashboard/correlation-warning.tsx` — banner when net effective exposure on any single currency exceeds 200%
+
+**Acceptance:** With 3 USD-quoted long positions, banner: "Net USD exposure 240% — this is one trade, not three."
+
+**Effort:** ~2 hours (with hardcoded matrix; full price-based correlation is half day more)
+
+**Notes:**
+
+---
+
+## 🔵 Long-tail / power features
+
+### 34. `[ ]` Public per-entry sharing with token
+
+**Why:** We already added the `is_public` flag and `/u/[handle]` route. Per-entry token URLs let the user share a single trade with a coach without exposing their handle.
+
+**Files (new):**
+- Migration: add `journal_entries.share_token` (nullable text, indexed)
+- Server action `generateShareToken(entryId)` / `revokeShareToken(entryId)`
+- New route `src/app/share/[token]/page.tsx` — read-only entry view
+- Toggle in entry-editor-drawer next to existing "Share publicly"
+
+**Effort:** ~3 hours
+
+**Notes:**
+
+---
+
+### 35. `[ ]` Coach AI v2 — prescriptive
+
+**Why:** Current Coach AI describes patterns. Next step is prescriptive: "Stop shorts on EUR/USD — your edge is statistically negative." Same `generateCoachInsights` action; new system prompt + structured output schema.
+
+**Files:**
+- `src/lib/actions/coach.ts` — extend prompt; output now `{ observations: string[]; suggestions: { action: string; basis: string; severity: "info" | "warn" }[] }`
+- `src/components/dashboard/coach-nudge.tsx` — render suggestions section below observations
+
+**Effort:** ~2 hours
+
+**Notes:** Needs ANTHROPIC_API_KEY same as #18.
+
+---
+
+### 36. `[ ]` Position close + SL/TP modify from the journal
+
+**Why:** Two-way TL integration. Click a position → "Move SL to break-even" → API call → confirmation toast.
+
+**Files:**
+- `src/lib/integrations/tradelocker/client.ts` — `tlModifyPosition({ posId, stopLoss, takeProfit })`, `tlClosePosition(posId)`
+- New buttons on Trade Detail Drawer for open positions
+- Realtime sync should reflect new SL/TP automatically
+
+**Acceptance:** Click "Move SL to BE" on an open trade → SL updated server-side → page refreshes via realtime → drawer shows new SL.
+
+**Effort:** ~half day
+
+**Notes:** Destructive — wrap in confirm dialog. Track every modification as a journal note for audit.
+
+---
+
+### 37. `[ ]` Trade ideas mode
+
+**Why:** "I would have taken this" log without real money. After a few weeks, compare hypothetical ideas to actual trades — are you executing your best plans?
+
+**Files:**
+- Reuse existing `journal_entries.kind = "idea"` (already supported)
+- New "Log idea" button next to Log Trade
+- New /ideas page or filter on /journal showing ideas vs trades
+- Comparison card: "You logged 12 ideas this month, executed 7 of them. The 5 you skipped would have averaged +0.8R."
+
+**Effort:** ~half day
+
+**Notes:**
+
+---
+
+### 38. `[ ]` WebSocket streaming via TradeLocker
+
+**Why:** TL has WebSocket fills/quotes. We poll. Live push removes ~30s sync lag and per-poll API spend.
+
+**Files:**
+- `src/lib/integrations/tradelocker/socket.ts` — WS client wrapper
+- Long-running listener — Vercel Functions don't keep WS alive past timeout, so likely a small Node service on Fly.io / Railway
+
+**Acceptance:** Fill a trade in TL UI → it appears in journal Ledger within 1s without manual sync.
+
+**Effort:** ~1 day (architecture decisions on the listener side dominate)
+
+**Notes:** Defer until daily polling proves insufficient.
+
+---
+
+### 39. `[ ]` Coach AI auto-tagging
+
+**Why:** When a journal entry is saved, run a secondary AI pass that suggests tags / mistakes / mood from the prose. User accepts/rejects with one click.
+
+**Files:**
+- `src/lib/actions/coach-tag.ts` — extracts `{ tags, mistakes, mood }` from `pre_trade + post_trade + cold_review` text
+- Entry editor drawer shows "Coach suggests: tilt, fomo · accept all / reject" chip row
+
+**Effort:** ~2 hours
+
+**Notes:** Cheap call (claude-haiku, <500 tokens out). Gate on user setting toggle to avoid surprise API spend.
+
+---
+
+### 40. `[ ]` Trade instant context (DXY, VIX, S&P at trade time)
+
+**Why:** When you click a past trade, see what the macro environment was doing at the moment of entry. "EUR/USD long taken on 2026-04-12 14:30 UTC · DXY was 104.23 (down 0.4%) · S&P up 0.7% · VIX 13.2 (calm)."
+
+**Files:**
+- `src/lib/integrations/polygon.ts` (shared with #32) — fetch DXY/VIX/SPX snapshot at a given timestamp
+- `src/components/trades/trade-detail-drawer.tsx` — new "Context" panel inside Order tab
+
+**Effort:** ~3 hours (after #32's Polygon plumbing exists)
+
+**Notes:**
+
+---
+
+## Recommended top-3 tomorrow
+
+If you can only do a day:
+
+1. **Sprint A** (#22 + #23 + #24 + #25) — capture broker data we already pay for. ~Half a day. Unlocks every later analytics improvement.
+2. **#26 Risk-of-Ruin Calculator** — the killer feature no competitor has. Pure math, ~3 hours.
+3. **#27 Monte Carlo Equity Simulator** — pairs with #26 on the same Analytics row.
+
+That's a single full day and the app jumps to "best-in-class trader-grade journal." Sprint C (margin call card + order-type analysis) layers on top once Sprint A is in the DB.
 
 ---
 
@@ -394,4 +724,5 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 Record decisions to defer or skip items here so the reasoning isn't lost.
 
 - **2026-05-02** — Backtest deferred indefinitely. Cost is the historical-data feed, not the UI. Revisit when ≥ 100 trades on a single playbook exist (so backtest-vs-live comparison is meaningful) and a data provider is committed.
-- **2026-05-02** — Items #5, #6, #7 deferred — they need infrastructure (FX rates, R/percent display refactor, sizing cap propagation) that's disproportionate to the visible value.
+- **2026-05-02** — Items #5, #6, #7 deferred — they need infrastructure (FX rates, R/percent display refactor, sizing cap propagation) that's disproportionate to the visible value. (Subsequently un-deferred and shipped same day per user request.)
+- **2026-05-03** — Items #22–#40 added based on TradeLocker data audit + brainstorm. Sprint A (#22–#25) prioritized first because every downstream analytic gets richer data automatically once those columns exist.
