@@ -613,6 +613,7 @@ export type Database = {
           cap_by_prop_rule: boolean
           coach_auto_tag: boolean
           coach_cache: Json | null
+          coach_use_ai: boolean
           confirm_above_pct: number
           created_at: string
           default_fixed_lots: number
@@ -666,6 +667,7 @@ export type Database = {
           cap_by_prop_rule?: boolean
           coach_auto_tag?: boolean
           coach_cache?: Json | null
+          coach_use_ai?: boolean
           confirm_above_pct?: number
           created_at?: string
           default_fixed_lots?: number
@@ -719,6 +721,7 @@ export type Database = {
           cap_by_prop_rule?: boolean
           coach_auto_tag?: boolean
           coach_cache?: Json | null
+          coach_use_ai?: boolean
           confirm_above_pct?: number
           created_at?: string
           default_fixed_lots?: number

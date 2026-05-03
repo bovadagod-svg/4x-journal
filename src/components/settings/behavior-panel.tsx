@@ -14,6 +14,7 @@ export type BehaviorState = {
   tilt_cutoff: number
   tilt_cooldown_hours: number
   coach_auto_tag: boolean
+  coach_use_ai: boolean
 }
 
 export function BehaviorPanel({ initial }: { initial: BehaviorState }) {
@@ -68,10 +69,16 @@ export function BehaviorPanel({ initial }: { initial: BehaviorState }) {
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection icon="sparkle" title="Coach AI auto-tagging" subtitle="Read your prose and suggest tags / mistakes / mood">
+      <SettingsSection icon="sparkle" title="Coach insights" subtitle="How the Dashboard's Coach widget generates its observations">
         <SettingsRow
-          label="Enable auto-tag suggestions"
-          hint="Adds a 'Coach: suggest tags' button on the entry editor's Tags tab. Each click costs ~1 cent in API spend; gated behind this toggle to avoid surprise charges. Requires ANTHROPIC_API_KEY set in your environment."
+          label="Use AI for daily brief"
+          hint="When ON (and ANTHROPIC_API_KEY is set), the Coach widget asks Claude to read your last 30 days of trades + journal entries. When OFF, the widget computes the same observations + suggestions deterministically from your stats — no API calls, no cost. Same widget layout either way."
+        >
+          <Toggle name="coach_use_ai" checked={tracker.current.coach_use_ai} onChange={(v) => set("coach_use_ai", v)} />
+        </SettingsRow>
+        <SettingsRow
+          label="Auto-tag entries from prose"
+          hint="Adds a 'Coach: suggest tags' button on the entry editor's Tags tab. Each click costs ~1 cent in API spend; off by default to avoid surprise charges. Requires ANTHROPIC_API_KEY set in your environment."
           last
         >
           <Toggle name="coach_auto_tag" checked={tracker.current.coach_auto_tag} onChange={(v) => set("coach_auto_tag", v)} />

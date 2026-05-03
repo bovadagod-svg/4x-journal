@@ -107,6 +107,7 @@ export default async function SettingsPage({
           tilt_cutoff: Number(s?.tilt_cutoff ?? 3),
           tilt_cooldown_hours: Number(s?.tilt_cooldown_hours ?? 4),
           coach_auto_tag: s?.coach_auto_tag ?? false,
+          coach_use_ai: s?.coach_use_ai ?? true,
         }}
       />
     ),

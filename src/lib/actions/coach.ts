@@ -3,18 +3,23 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { deterministicInsights } from "@/lib/coach-insights"
 
 /**
- * Coach AI: takes the user's last 30 days of closed trades + journal entries
- * and asks Claude for 2–3 specific observations about edges and leaks.
+ * Coach insights: produces 2-3 observations + 1-3 suggestions on the user's
+ * last 30 days of closed trades + journal entries.
  *
- * Activation requires `ANTHROPIC_API_KEY` env var. Without it, the action
- * returns a "not configured" error and the dashboard widget renders a
- * placeholder telling the user how to enable it.
+ * Two modes, decided by `user_settings.coach_use_ai` + `ANTHROPIC_API_KEY`:
  *
- * Cache: result is keyed by user_id + day so we don't blast the API on every
- * dashboard refresh. Stored in user_settings as a JSON blob via a separate
- * `coach_cache` column (added by migration `user_settings_coach_cache`).
+ *   1. "ai" — sends the dataset to Claude haiku, parses the JSON response.
+ *      Used when `coach_use_ai = true` (the default) AND the env var is set.
+ *
+ *   2. "deterministic" — runs `deterministicInsights()` over the same dataset
+ *      and produces the same `{observations, suggestions}` shape from pure
+ *      arithmetic. Used when the toggle is off OR the key is missing. The
+ *      widget renders both modes identically.
+ *
+ * Cache: keyed by user_id + day + mode so toggling the setting regenerates.
  */
 
 export type CoachSuggestion = {
@@ -60,33 +65,38 @@ Format your response as a single JSON object exactly like:
 {"observations":["...","..."],"suggestions":[{"action":"...","basis":"...","severity":"warn"}]}`
 
 export async function generateCoachInsights(force = false): Promise<CoachState> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { ok: false, error: "ANTHROPIC_API_KEY not set in environment", configured: false }
-  }
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: "Not signed in.", configured: true }
 
-  // Cache check — if we have a cached blob from today, return it unless forced.
-  // Cache shape evolved with coach v2; tolerate both shapes so old cached
-  // blobs still render without forcing a regeneration.
+  // Decide mode up front. coach_use_ai defaults to true (treated as opt-out).
+  const { data: settingsRow } = await supabase
+    .from("user_settings")
+    .select("coach_use_ai, coach_cache")
+    .eq("user_id", user.id)
+    .maybeSingle()
+  const useAi = settingsRow?.coach_use_ai !== false
+  const haveKey = !!process.env.ANTHROPIC_API_KEY
+  const mode: "ai" | "deterministic" = useAi && haveKey ? "ai" : "deterministic"
+
+  // Cache check — keyed by day + mode so flipping the toggle regenerates,
+  // and a missing key falling back to deterministic doesn't get masked by
+  // a stale AI cache (or vice-versa).
   const todayKey = new Date().toISOString().slice(0, 10)
   if (!force) {
-    const { data: row } = await supabase
-      .from("user_settings")
-      .select("coach_cache")
-      .eq("user_id", user.id)
-      .maybeSingle()
-    const cache = row?.coach_cache as
+    const cache = settingsRow?.coach_cache as
       | {
           day?: string
+          mode?: "ai" | "deterministic"
           payload?: CoachInsightsPayload
           insights?: string[]
           generatedAt?: string
         }
       | null
-    if (cache?.day === todayKey && (cache.payload || cache.insights)) {
+    // Old cached blobs (pre-mode field) get a free pass on the mode check —
+    // we'll regenerate naturally on the next forced refresh.
+    const modeMatches = cache?.mode == null || cache.mode === mode
+    if (cache?.day === todayKey && modeMatches && (cache.payload || cache.insights)) {
       const payload: CoachInsightsPayload = cache.payload ?? {
         observations: cache.insights ?? [],
         suggestions: [],
@@ -148,6 +158,34 @@ export async function generateCoachInsights(force = false): Promise<CoachState> 
     }
   })
 
+  // Deterministic branch — pure arithmetic, no API call. Same payload shape
+  // so the widget renders identically.
+  if (mode === "deterministic") {
+    const detPayload = deterministicInsights({
+      trades: trades.map((t) => ({
+        pair: t.pair,
+        side: t.side,
+        r: t.r != null ? Number(t.r) : null,
+        pnl: t.pnl != null ? Number(t.pnl) : null,
+        opened_at: t.opened_at,
+        closed_at: t.closed_at,
+      })),
+      entries: (entries ?? []).map((e) => ({ trade_id: e.trade_id, rule_break: !!e.rule_break })),
+      tradeIdByTrade: (t) => {
+        const match = trades.find((x) => x.pair === t.pair && x.opened_at === t.opened_at && x.closed_at === t.closed_at)
+        return match?.id ?? null
+      },
+    })
+    const generatedAt = new Date().toISOString()
+    await supabase.from("user_settings").upsert(
+      { user_id: user.id, coach_cache: { day: todayKey, mode, payload: detPayload, insights: detPayload.observations, generatedAt } },
+      { onConflict: "user_id" },
+    )
+    revalidatePath("/dashboard")
+    return { ok: true, payload: detPayload, generatedAt, cached: false }
+  }
+
+  // AI branch — send the dataset to Claude.
   const userMessage = `Here are the user's last ${compactDataset.length} closed trades and journal entries (most recent last):\n\n${JSON.stringify(compactDataset, null, 2)}\n\nReturn the JSON object with observations + suggestions arrays as specified in the system prompt.`
 
   let payload: CoachInsightsPayload
@@ -206,12 +244,12 @@ export async function generateCoachInsights(force = false): Promise<CoachState> 
   }
 
   const generatedAt = new Date().toISOString()
-  // Cache result. Both new (`payload`) and legacy (`insights`) shapes for
-  // forward-compatibility with the older widget code.
+  // Cache result with mode field. Both new (`payload`) and legacy (`insights`)
+  // shapes for forward-compatibility with the older widget code.
   await supabase
     .from("user_settings")
     .upsert(
-      { user_id: user.id, coach_cache: { day: todayKey, payload, insights: payload.observations, generatedAt } },
+      { user_id: user.id, coach_cache: { day: todayKey, mode, payload, insights: payload.observations, generatedAt } },
       { onConflict: "user_id" },
     )
 

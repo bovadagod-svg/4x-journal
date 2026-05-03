@@ -276,6 +276,7 @@ const BehaviorSchema = z.object({
   tilt_cutoff: z.coerce.number().int().min(2).max(10),
   tilt_cooldown_hours: z.coerce.number().int().min(1).max(48),
   coach_auto_tag: z.boolean(),
+  coach_use_ai: z.boolean(),
 })
 
 export async function updateBehavior(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
@@ -287,6 +288,7 @@ export async function updateBehavior(_prev: SettingsFormState, formData: FormDat
     tilt_cutoff: formData.get("tilt_cutoff"),
     tilt_cooldown_hours: formData.get("tilt_cooldown_hours"),
     coach_auto_tag: formData.get("coach_auto_tag") === "true",
+    coach_use_ai: formData.get("coach_use_ai") === "true",
   })
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }
   return applyPatch(parsed.data as Update)
