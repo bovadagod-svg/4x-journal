@@ -3,6 +3,7 @@ import type { Trade } from "@/lib/queries/trades"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { TradeRowActions } from "@/components/trades/trade-row-actions"
 import { formatUSD } from "@/lib/finance"
+import { formatLotsOrSize } from "@/lib/lots"
 
 /**
  * Full prototype column set: Pair / Side / Size / Entry / Stop / Target /
@@ -59,7 +60,7 @@ export function OpenPositions({ trades }: { trades: Trade[] }) {
                         {t.side}
                       </span>
                     </Td>
-                    <TdMono align="right">{Number(t.size).toLocaleString()}</TdMono>
+                    <TdMono align="right">{formatLotsOrSize(t.size, t.contract_size, { withUnit: false })}</TdMono>
                     <TdMono align="right">{Number(t.entry_price).toFixed(5)}</TdMono>
                     <TdMono align="right" tone="dim">{t.stop_price != null ? Number(t.stop_price).toFixed(5) : "—"}</TdMono>
                     <TdMono align="right" tone="dim">{t.target_price != null ? Number(t.target_price).toFixed(5) : "—"}</TdMono>

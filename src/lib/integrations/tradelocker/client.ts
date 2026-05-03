@@ -52,21 +52,48 @@ export type TLOrderMeta = {
   comment: string | null
 }
 
+/**
+ * One filled order on a TradeLocker position. A position can have many of
+ * these — typically 1 entry plus N exits when the user scales out, or
+ * multiple entries when they scale in.
+ */
+export type TLOrderFill = {
+  /** TL order id — unique per fill, used as our dedup key for trade_fills.external_id. */
+  orderId: string
+  /** Whether this fill opened or closed the position. */
+  kind: "entry" | "exit"
+  /** Filled price (avgPrice from TL). */
+  price: number
+  /** Filled size in units (lots × contractSize). */
+  size: number
+  /** Filled timestamp. */
+  filledAt: string
+  /** Per-fill broker fields (commission, swap, etc). */
+  meta: TLOrderMeta
+}
+
 export type TLPosition = {
   externalId: string
   pair: string
   side: "long" | "short"
+  /** Total entry size in units (lots × contractSize). */
   size: number
+  /** Volume-weighted average entry price across all entry fills. */
   entryPrice: number
   stopPrice: number | null
   targetPrice: number | null
+  /** Volume-weighted average exit price across all exit fills (null when still open). */
   exitPrice: number | null
   pnl: number | null
   status: "open" | "closed"
+  /** Earliest entry-fill timestamp. */
   openedAt: string
+  /** Latest exit-fill timestamp (null when still open). */
   closedAt: string | null
-  entryMeta: TLOrderMeta
-  exitMeta: TLOrderMeta | null
+  /** Units per lot for this instrument. 1 for FX-as-units, 100 for XAU, etc. */
+  contractSize: number
+  /** Every filled order on this position, in chronological order. */
+  fills: TLOrderFill[]
   raw: unknown
 }
 
@@ -417,10 +444,15 @@ function fallbackContractSize(symbol: string): number {
 }
 
 /**
- * TradeLocker stores orders, not trades. A single round-trip trade is a
- * pair of Filled orders sharing a positionId — one with isOpen=true (the
- * entry) and one with isOpen=false (the exit, typically the SL or TP that
- * hit). Cancelled orders are the OCO siblings; ignore them.
+ * TradeLocker stores orders, not trades. A single position can have many
+ * filled orders sharing a positionId:
+ *   - 1+ entry orders (isOpen=true) — usually one but the user can scale in
+ *   - 0+ exit orders (isOpen=false) — scale-outs + a final close (SL/TP/manual)
+ *
+ * Cancelled orders are OCO siblings; we ignore them. We emit one trade per
+ * position with its full fill list, weighted-average prices, and total size,
+ * so the importer can write each fill as a separate trade_fills row and
+ * preserve the trade's actual lifecycle.
  */
 function reconstructClosedTrades(
   orderRows: Array<Record<string, unknown>>,
@@ -440,41 +472,91 @@ function reconstructClosedTrades(
     const filled = orders.filter((o) => /fill/i.test(String(o.status ?? "")))
     if (filled.length === 0) continue
 
-    const opener = filled.find((o) => isTrue(o.isOpen)) ?? filled[0]
-    const closer = filled.find((o) => isFalse(o.isOpen))
-    if (!closer) continue // still open — handled by /positions endpoint
+    const entries = filled.filter((o) => isTrue(o.isOpen))
+    const exits = filled.filter((o) => isFalse(o.isOpen))
 
-    // Side comes from the opening order ("buy" → long, "sell" → short).
+    // No closes yet → handled by the /positions endpoint, not /ordersHistory.
+    if (exits.length === 0) continue
+    // No opens recorded → can't classify side; skip.
+    if (entries.length === 0) continue
+
+    // Side comes from the (first) opening order. Buy → long, sell → short.
+    const opener = entries[0]
     const side = inferSide(opener)
+
+    // Resolve instrument metadata from the first entry order. All fills on a
+    // single position trade the same instrument so this is unambiguous.
     const instId = opener.tradableInstrumentId != null ? String(opener.tradableInstrumentId) : ""
     const info = instId ? instrumentMap.get(instId) : undefined
     const symbol = info?.name ?? ""
     const contractSize = info?.contractSize ?? 1
-    const entry = num(opener.avgPrice ?? opener.price) ?? 0
-    const exit = num(closer.avgPrice ?? closer.price)
-    const lots = num(opener.filledQty ?? opener.qty) ?? 0
-    const units = lots * contractSize
+
+    // Build per-fill records for every filled order, in chronological order.
+    const allFilled = [...filled].sort((a, b) =>
+      timestampOf(a) - timestampOf(b),
+    )
+    const fills: TLOrderFill[] = []
+    for (const o of allFilled) {
+      const lots = num(o.filledQty ?? o.qty) ?? 0
+      const px = num(o.avgPrice ?? o.price)
+      const ts = tlTimestamp(o.lastModified ?? o.createdDate)
+      const orderId = o.id != null ? String(o.id) : (o.orderId != null ? String(o.orderId) : "")
+      if (!orderId || px == null || lots <= 0 || !ts) continue
+      fills.push({
+        orderId,
+        kind: isTrue(o.isOpen) ? "entry" : "exit",
+        price: px,
+        size: lots * contractSize,
+        filledAt: ts,
+        meta: extractOrderMeta(o),
+      })
+    }
+    if (fills.length === 0) continue
+
+    // Volume-weighted average prices.
+    const entryFills = fills.filter((f) => f.kind === "entry")
+    const exitFills = fills.filter((f) => f.kind === "exit")
+    const entrySize = entryFills.reduce((s, f) => s + f.size, 0)
+    const exitSize = exitFills.reduce((s, f) => s + f.size, 0)
+    const entryAvg = entrySize > 0
+      ? entryFills.reduce((s, f) => s + f.price * f.size, 0) / entrySize
+      : 0
+    const exitAvg = exitSize > 0
+      ? exitFills.reduce((s, f) => s + f.price * f.size, 0) / exitSize
+      : null
+
+    // Stop / target — these change throughout the trade as the user adjusts.
+    // Use the most recent values from any closing order's snapshot, falling
+    // back to the opener if none of the closers carry them.
+    const lastExitOrder = allFilled.filter((o) => isFalse(o.isOpen)).pop() ?? opener
+    const stopPrice = num(lastExitOrder.stopLoss) ?? num(opener.stopLoss)
+    const targetPrice = num(lastExitOrder.takeProfit) ?? num(opener.takeProfit)
 
     out.push({
       externalId: positionId,
       pair: prettyPair(symbol),
       side,
-      size: units,
-      entryPrice: entry,
-      stopPrice: num(opener.stopLoss),
-      targetPrice: num(opener.takeProfit),
-      exitPrice: exit,
-      pnl: null,                // computed in the action via finance.ts (units × price diff)
+      size: entrySize,
+      entryPrice: entryAvg,
+      stopPrice,
+      targetPrice,
+      exitPrice: exitAvg,
+      pnl: null, // computed in the action via finance.ts (units × price diff)
       status: "closed",
-      openedAt: tlTimestamp(opener.lastModified ?? opener.createdDate) ?? new Date().toISOString(),
-      closedAt: tlTimestamp(closer.lastModified ?? closer.createdDate),
-      entryMeta: extractOrderMeta(opener),
-      exitMeta: extractOrderMeta(closer),
-      raw: { opener, closer, allOrders: orders },
+      openedAt: entryFills[0]?.filledAt ?? new Date().toISOString(),
+      closedAt: exitFills.length > 0 ? exitFills[exitFills.length - 1].filledAt : null,
+      contractSize,
+      fills,
+      raw: { entries, exits, allOrders: orders },
     })
   }
 
   return out.filter(isValid)
+}
+
+function timestampOf(o: Record<string, unknown>): number {
+  const t = tlTimestamp(o.lastModified ?? o.createdDate)
+  return t ? new Date(t).getTime() : 0
 }
 
 function isTrue(v: unknown): boolean {
@@ -601,8 +683,25 @@ function objectToPosition(
   const lots = num(r.qty ?? r.filledQty ?? r.quantity ?? r.size ?? r.volume ?? r.lots) ?? 0
   const units = lots * contractSize
 
+  const externalId = idCandidate != null ? String(idCandidate) : ""
+  const openedAt = tlTimestamp(r.openDate ?? r.createdDate ?? r.openTime ?? r.openedAt ?? r.openTimestamp ?? r.timestamp) ?? new Date().toISOString()
+
+  // Open positions only have the entry fill in /positions. The synthetic
+  // "entry" fill uses the position id as orderId since /positions doesn't
+  // surface individual order ids.
+  const fills: TLOrderFill[] = (entry != null && lots > 0)
+    ? [{
+        orderId: `${externalId}:open`,
+        kind: "entry" as const,
+        price: entry,
+        size: units,
+        filledAt: openedAt,
+        meta: extractOrderMeta(r),
+      }]
+    : []
+
   return {
-    externalId: idCandidate != null ? String(idCandidate) : "",
+    externalId,
     pair: prettyPair(symbol),
     side,
     size: units,
@@ -612,10 +711,10 @@ function objectToPosition(
     exitPrice: exit,
     pnl: num(r.unrealizedPl ?? r.realizedPnL ?? r.pnl ?? r.profit ?? r.netPnL ?? r.profitLoss),
     status,
-    openedAt: tlTimestamp(r.openDate ?? r.createdDate ?? r.openTime ?? r.openedAt ?? r.openTimestamp ?? r.timestamp) ?? new Date().toISOString(),
+    openedAt,
     closedAt: status === "closed" ? tlTimestamp(r.lastModified ?? r.closeTime ?? r.closedAt ?? r.closeTimestamp ?? r.lastUpdateTimestamp) : null,
-    entryMeta: extractOrderMeta(r),
-    exitMeta: null,
+    contractSize,
+    fills,
     raw: r,
   }
 }

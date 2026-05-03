@@ -3,7 +3,11 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@/components/icons"
-import { syncTradeLockerConnection, disconnectTradeLockerConnection } from "@/lib/actions/tradelocker"
+import {
+  disconnectTradeLockerConnection,
+  reimportTradeLockerConnection,
+  syncTradeLockerConnection,
+} from "@/lib/actions/tradelocker"
 
 export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, lastError, tradesSynced }: {
   connectionId: string
@@ -34,6 +38,20 @@ export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, 
     if (!wipe) return
     startTransition(async () => {
       await disconnectTradeLockerConnection(connectionId, { deleteTrades: true })
+      router.refresh()
+    })
+  }
+
+  const onReimport = () => {
+    if (!confirm("Wipe and re-import all TradeLocker trades for this account?\n\nUse this when the importer has been upgraded (e.g. better scale-out tracking) and you want existing trades to pick up the new shape. Manual trades aren't touched. Your journal entries linked to wiped trades will lose their trade_id link but the entry text stays.")) return
+    setResult(null)
+    startTransition(async () => {
+      const r = await reimportTradeLockerConnection(connectionId)
+      if (r.ok) {
+        setResult({ kind: "ok", n: r.tradesUpserted ?? 0 })
+      } else {
+        setResult({ kind: "err", msg: r.error ?? "Re-import failed." })
+      }
       router.refresh()
     })
   }
@@ -108,6 +126,15 @@ export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, 
           )}
         </div>
       )}
+
+      <button
+        onClick={onReimport}
+        disabled={pending}
+        style={{ background: "none", border: "none", color: "var(--c-amber)", fontSize: 11, padding: 0, textAlign: "left", cursor: "pointer", marginTop: 4 }}
+        title="Wipe synced TL trades and re-fetch from broker. Useful after importer upgrades (e.g. scale-out tracking)."
+      >
+        ↻ Re-import all trades from TradeLocker
+      </button>
 
       {/* keep the destructive variant available but visually de-emphasized */}
       <button onClick={onDisconnect} disabled={pending} style={{ background: "none", border: "none", color: "var(--c-fg-dim)", fontSize: 10, padding: 0, textAlign: "left", cursor: "pointer" }}>

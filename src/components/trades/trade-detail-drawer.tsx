@@ -20,6 +20,7 @@ type Aggregate = { ts: number; open: number; high: number; low: number; close: n
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
 import { pipsBetween } from "@/lib/pip"
+import { formatLotsOrSize } from "@/lib/lots"
 
 type Tab = "order" | "fills" | "replay" | "actions"
 
@@ -139,7 +140,14 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                 <div style={{ marginLeft: "auto", textAlign: "right" }}>
                   <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Open</div>
                   <div className="tnum" style={{ fontSize: 14, fontWeight: 500 }}>
-                    {t.status === "pending" ? "—" : remainingSize > 0 ? remainingSize.toFixed(2) : "0"} <span style={{ color: "var(--c-fg-muted)", fontSize: 11 }}>/ {totalEntrySize.toFixed(2) || Number(t.size).toFixed(2)}</span>
+                    {t.status === "pending"
+                      ? "—"
+                      : remainingSize > 0
+                        ? formatLotsOrSize(remainingSize, t.contract_size, { withUnit: false })
+                        : "0"}
+                    <span style={{ color: "var(--c-fg-muted)", fontSize: 11, marginLeft: 4 }}>
+                      / {formatLotsOrSize(totalEntrySize || Number(t.size), t.contract_size)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -288,7 +296,7 @@ function OrderPanel({
           <Cell label="Stop" value={t.stop_price != null ? fmtPrice(Number(t.stop_price), t.pair) : "—"} mono />
           <Cell label="Target" value={t.target_price != null ? fmtPrice(Number(t.target_price), t.pair) : "—"} mono />
           <Cell label="Avg exit" value={t.exit_price != null ? fmtPrice(Number(t.exit_price), t.pair) : "—"} mono />
-          <Cell label="Size" value={Number(t.size).toFixed(2)} mono />
+          <Cell label="Size" value={formatLotsOrSize(t.size, t.contract_size)} mono />
           <Cell label="Risk $" value={t.risk_amount != null ? formatUSD(Number(t.risk_amount)) : "—"} mono />
           <Cell label="Planned R" value={plannedR != null ? `${plannedR > 0 ? "+" : ""}${plannedR.toFixed(2)}R` : "—"} />
           <Cell label="Mood" value={t.mood ?? "—"} />
@@ -361,7 +369,7 @@ function FillsPanel({
         {entryFills.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--c-fg-dim)", padding: "8px 0" }}>None yet — pending order awaiting fill.</div>
         ) : (
-          <FillsTable fills={entryFills} pair={t.pair} kind="entry" />
+          <FillsTable fills={entryFills} pair={t.pair} kind="entry" contractSize={Number(t.contract_size) || 1} />
         )}
       </Section>
 
@@ -369,7 +377,7 @@ function FillsPanel({
         {exitFills.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--c-fg-dim)", padding: "8px 0" }}>None yet.</div>
         ) : (
-          <FillsTable fills={exitFills} pair={t.pair} kind="exit" />
+          <FillsTable fills={exitFills} pair={t.pair} kind="exit" contractSize={Number(t.contract_size) || 1} />
         )}
       </Section>
 
@@ -391,11 +399,12 @@ function FillsPanel({
 }
 
 function FillsTable({
-  fills, pair, kind,
+  fills, pair, kind, contractSize,
 }: {
   fills: NonNullable<TradeDetail>["fills"]
   pair: string
   kind: "entry" | "exit"
+  contractSize: number
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, overflowX: "auto" }}>
@@ -433,7 +442,7 @@ function FillsTable({
           <span className="mono tnum" style={{ textAlign: "right", fontWeight: 500 }}>
             {fmtPrice(Number(f.price), pair)}
           </span>
-          <span className="tnum" style={{ textAlign: "right" }}>{Number(f.size).toFixed(2)}</span>
+          <span className="tnum" style={{ textAlign: "right" }}>{formatLotsOrSize(f.size, contractSize, { withUnit: false })}</span>
           <span style={{ textAlign: "right", fontSize: 10.5, color: kind === "entry" ? "var(--c-green-bright)" : "var(--c-red-bright)", textTransform: "capitalize" }}>
             {f.reason ?? kind}
           </span>

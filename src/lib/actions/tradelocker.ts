@@ -243,12 +243,13 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
   }
 
   // Upsert trades + fills. Strategy:
-  //   1. Upsert parent rows (existing behavior, dedup on external_id)
-  //   2. Fetch back the resulting trade IDs
-  //   3. Idempotently insert one entry fill (and one exit fill if closed)
-  //      using `${externalId}:entry` and `${externalId}:exit` as fill external_ids
-  //      so re-syncs don't create duplicate fills.
-  //   4. Trigger recomputes parent aggregates from fills.
+  //   1. Upsert parent rows (dedup on positionId)
+  //   2. Delete legacy fills for these positions (old `:entry`/`:exit` keys)
+  //      so the upgrade from single-fill to multi-fill is clean
+  //   3. Insert one trade_fills row per actual TL filled order, using the
+  //      TL order id as the dedup key — this preserves scale-outs as
+  //      separate fills with their own timestamps + prices
+  //   4. Trigger recomputes parent aggregates from fills
   const all = [...pull.open, ...pull.closed]
   const rows = all.map((p) => ({
     user_id: userId,
@@ -261,6 +262,7 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
     stop_price: p.stopPrice,
     target_price: p.targetPrice,
     size: p.size,
+    contract_size: p.contractSize,
     status: p.status,
     notes: `Synced from TradeLocker (${env}).`,
     tags: ["tradelocker"],
@@ -288,6 +290,18 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
     const tradeByExternal = new Map<string, string>()
     ;(tradeRows ?? []).forEach((t) => { if (t.external_id) tradeByExternal.set(t.external_id, t.id) })
 
+    // Cleanup legacy fills: pre-multi-fill imports used external_ids of
+    // shape "{positionId}:entry" / "{positionId}:exit". Delete those so
+    // re-sync replaces them cleanly with one row per actual order.
+    const legacyKeys = all.flatMap((p) => [`${p.externalId}:entry`, `${p.externalId}:exit`])
+    if (legacyKeys.length > 0) {
+      await supabase
+        .from("trade_fills")
+        .delete()
+        .eq("external_provider", "tradelocker")
+        .in("external_id", legacyKeys)
+    }
+
     type FillInsert = {
       trade_id: string
       user_id: string
@@ -311,48 +325,25 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
     for (const p of all) {
       const tradeId = tradeByExternal.get(p.externalId)
       if (!tradeId) continue
-      // Entry fill — always present once the parent trade is open or closed.
-      if (p.openedAt) {
+      for (const f of p.fills) {
         fills.push({
           trade_id: tradeId,
           user_id: userId,
-          kind: "entry",
+          kind: f.kind,
           reason: "broker_sync",
-          price: p.entryPrice,
-          size: p.size,
-          filled_at: p.openedAt,
+          price: f.price,
+          size: f.size,
+          filled_at: f.filledAt,
           external_provider: "tradelocker",
-          external_id: `${p.externalId}:entry`,
-          commission: p.entryMeta.commission,
-          swap: p.entryMeta.swap,
-          tax: p.entryMeta.tax,
-          request_price: p.entryMeta.requestPrice,
-          order_type: p.entryMeta.orderType,
-          execution_type: p.entryMeta.executionType,
-          magic_number: p.entryMeta.magicNumber,
-          broker_comment: p.entryMeta.comment,
-        })
-      }
-      // Exit fill — only for closed trades.
-      if (p.status === "closed" && p.exitPrice != null && p.closedAt) {
-        fills.push({
-          trade_id: tradeId,
-          user_id: userId,
-          kind: "exit",
-          reason: "broker_sync",
-          price: p.exitPrice,
-          size: p.size,
-          filled_at: p.closedAt,
-          external_provider: "tradelocker",
-          external_id: `${p.externalId}:exit`,
-          commission: p.exitMeta?.commission ?? null,
-          swap: p.exitMeta?.swap ?? null,
-          tax: p.exitMeta?.tax ?? null,
-          request_price: p.exitMeta?.requestPrice ?? null,
-          order_type: p.exitMeta?.orderType ?? null,
-          execution_type: p.exitMeta?.executionType ?? null,
-          magic_number: p.exitMeta?.magicNumber ?? null,
-          broker_comment: p.exitMeta?.comment ?? null,
+          external_id: `${p.externalId}:fill:${f.orderId}`,
+          commission: f.meta.commission,
+          swap: f.meta.swap,
+          tax: f.meta.tax,
+          request_price: f.meta.requestPrice,
+          order_type: f.meta.orderType,
+          execution_type: f.meta.executionType,
+          magic_number: f.meta.magicNumber,
+          broker_comment: f.meta.comment,
         })
       }
     }
@@ -446,6 +437,62 @@ export async function disconnectTradeLockerConnection(connectionId: string, opts
   if (error) return { ok: false as const, error: error.message }
   revalidatePath("/accounts")
   return { ok: true as const }
+}
+
+// ── Re-import (full wipe + resync) ────────────────────────────────────────
+
+/**
+ * Nuke this connection's trades + fills and pull everything fresh from
+ * TradeLocker. Used when the import shape changes (e.g. moving from one
+ * exit fill per trade to per-order fills) and the easiest way to bring
+ * existing data up to spec is to throw it out and re-fetch.
+ *
+ * Deletes are scoped to `external_provider='tradelocker'` so manual trades
+ * on the same account stay untouched. Cascade through trade_fills via the
+ * `trade_fills_trade_id_fkey` foreign key — Postgres deletes those rows
+ * automatically when the parent trade is deleted.
+ */
+export async function reimportTradeLockerConnection(connectionId: string): Promise<{
+  ok: boolean
+  error?: string
+  tradesDeleted?: number
+  tradesUpserted?: number
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const { data: conn } = await supabase
+    .from("broker_connections")
+    .select("id, account_id, user_id")
+    .eq("id", connectionId)
+    .maybeSingle()
+  if (!conn) return { ok: false, error: "Connection not found." }
+  if (conn.user_id !== user.id) return { ok: false, error: "Not your connection." }
+
+  // Delete trade_fills first to avoid the FK cascade race; then trades.
+  await supabase
+    .from("trade_fills")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("external_provider", "tradelocker")
+  const { count: deleted } = await supabase
+    .from("trades")
+    .delete({ count: "exact" })
+    .eq("user_id", user.id)
+    .eq("account_id", conn.account_id)
+    .eq("external_provider", "tradelocker")
+
+  const sync = await syncTradeLockerConnection(connectionId)
+  if (!sync.ok) {
+    return { ok: false, error: `Wiped ${deleted ?? 0} trades but resync failed: ${sync.error}` }
+  }
+
+  return {
+    ok: true,
+    tradesDeleted: deleted ?? 0,
+    tradesUpserted: sync.tradesUpserted ?? 0,
+  }
 }
 
 // ── Per-trade actions (modify SL/TP, close at market) ─────────────────────

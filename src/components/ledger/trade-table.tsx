@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
+import { formatLotsOrSize } from "@/lib/lots"
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { useTradeDetailDrawer } from "@/components/trades/trade-detail-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
@@ -207,7 +208,7 @@ export function TradeTable({
                       </span>
                     </td>
                     <td className="tnum" style={{ padding: "11px 12px", textAlign: "right", fontFamily: "var(--font-mono)" }}>
-                      {Number(t.size).toLocaleString()}
+                      {formatLotsOrSize(t.size, t.contract_size, { withUnit: false })}
                     </td>
                     <td
                       className="tnum"

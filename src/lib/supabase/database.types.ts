@@ -507,6 +507,7 @@ export type Database = {
           cancel_reason: string | null
           cancelled_at: string | null
           closed_at: string | null
+          contract_size: number
           created_at: string
           entry_price: number
           exit_price: number | null
@@ -535,6 +536,7 @@ export type Database = {
           cancel_reason?: string | null
           cancelled_at?: string | null
           closed_at?: string | null
+          contract_size?: number
           created_at?: string
           entry_price: number
           exit_price?: number | null
@@ -563,6 +565,7 @@ export type Database = {
           cancel_reason?: string | null
           cancelled_at?: string | null
           closed_at?: string | null
+          contract_size?: number
           created_at?: string
           entry_price?: number
           exit_price?: number | null
