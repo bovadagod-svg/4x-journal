@@ -510,6 +510,7 @@ export type Database = {
           contract_size: number
           created_at: string
           entry_price: number
+          lifecycle_events: Json
           exit_price: number | null
           external_id: string | null
           external_provider: string | null
@@ -538,6 +539,7 @@ export type Database = {
           closed_at?: string | null
           contract_size?: number
           created_at?: string
+          lifecycle_events?: Json
           entry_price: number
           exit_price?: number | null
           external_id?: string | null
@@ -567,6 +569,7 @@ export type Database = {
           closed_at?: string | null
           contract_size?: number
           created_at?: string
+          lifecycle_events?: Json
           entry_price?: number
           exit_price?: number | null
           external_id?: string | null

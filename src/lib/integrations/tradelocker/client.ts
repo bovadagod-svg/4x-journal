@@ -53,6 +53,29 @@ export type TLOrderMeta = {
 }
 
 /**
+ * One event in a position's order history. TL returns one row per
+ * (order, status) pair, so the same order ID will appear multiple times
+ * as it moves through Placed → Replaced → Triggered → Filled (or
+ * Cancelled). The Trade Detail Drawer's Lifecycle tab renders these in
+ * chronological order to show the trade's full story including stop-loss
+ * adjustments, partial closes, etc.
+ */
+export type TLLifecycleEvent = {
+  occurredAt: string
+  orderId: string
+  status: string                // 'Placed' | 'Replaced' | 'Triggered' | 'Filled' | 'Cancelled' | other
+  type: string                  // 'Market' | 'Limit' | 'Stop' | 'StopLoss' | 'TakeProfit' | other
+  side: string                  // 'buy' | 'sell'
+  isOpen: boolean | null        // open-side event vs close-side event (null when ambiguous)
+  size: number | null           // in lots (broker-native — display-friendly)
+  price: number | null          // limit / trigger / stop price for the order
+  filledPrice: number | null    // avg fill price (Filled rows only)
+  stopLoss: number | null       // SL value carried by this event (null when not applicable)
+  takeProfit: number | null     // TP value carried by this event
+  raw: Record<string, unknown>
+}
+
+/**
  * One filled order on a TradeLocker position. A position can have many of
  * these — typically 1 entry plus N exits when the user scales out, or
  * multiple entries when they scale in.
@@ -94,6 +117,8 @@ export type TLPosition = {
   contractSize: number
   /** Every filled order on this position, in chronological order. */
   fills: TLOrderFill[]
+  /** Full chronological order-event timeline (Placed/Replaced/Triggered/Filled/Cancelled). */
+  lifecycle: TLLifecycleEvent[]
   raw: unknown
 }
 
@@ -532,6 +557,12 @@ function reconstructClosedTrades(
     const stopPrice = num(lastExitOrder.stopLoss) ?? num(opener.stopLoss)
     const targetPrice = num(lastExitOrder.takeProfit) ?? num(opener.takeProfit)
 
+    // Full chronological lifecycle — every status row, sorted by time asc.
+    const lifecycle = orders
+      .map(toLifecycleEvent)
+      .filter((e): e is TLLifecycleEvent => e != null)
+      .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())
+
     out.push({
       externalId: positionId,
       pair: prettyPair(symbol),
@@ -547,6 +578,7 @@ function reconstructClosedTrades(
       closedAt: exitFills.length > 0 ? exitFills[exitFills.length - 1].filledAt : null,
       contractSize,
       fills,
+      lifecycle,
       raw: { entries, exits, allOrders: orders },
     })
   }
@@ -557,6 +589,56 @@ function reconstructClosedTrades(
 function timestampOf(o: Record<string, unknown>): number {
   const t = tlTimestamp(o.lastModified ?? o.createdDate)
   return t ? new Date(t).getTime() : 0
+}
+
+/**
+ * Convert a raw TL order row into a normalized lifecycle event. Used by
+ * the importer to populate `trades.lifecycle_events`. Lossy by design —
+ * we keep the original row in `raw` so future improvements can pull more
+ * fields without re-parsing the broker payload.
+ */
+function toLifecycleEvent(o: Record<string, unknown>): TLLifecycleEvent | null {
+  const occurredAt = tlTimestamp(o.lastModified ?? o.createdDate)
+  if (!occurredAt) return null
+  const orderId = o.id != null ? String(o.id) : (o.orderId != null ? String(o.orderId) : "")
+  const status = String(o.status ?? "").trim() || "unknown"
+  const type = inferOrderType(o)
+  const sideRaw = o.side != null ? String(o.side).toLowerCase() : ""
+  const side = sideRaw.includes("buy") ? "buy" : sideRaw.includes("sell") ? "sell" : sideRaw
+  const isOpenRaw = o.isOpen
+  const isOpen = typeof isOpenRaw === "boolean" ? isOpenRaw
+    : isTrue(isOpenRaw) ? true
+    : isFalse(isOpenRaw) ? false
+    : null
+  // Size — keep raw lots (no contract-size multiplication) since the lifecycle
+  // tab is display-only. The trade summary uses units; the lifecycle uses lots.
+  const lots = num(o.filledQty ?? o.qty ?? o.quantity)
+  const price = num(o.price ?? o.stopPrice ?? o.limitPrice)
+  const filledPrice = /fill/i.test(status) ? num(o.avgPrice ?? o.price) : null
+  return {
+    occurredAt,
+    orderId,
+    status,
+    type,
+    side,
+    isOpen,
+    size: lots,
+    price,
+    filledPrice,
+    stopLoss: num(o.stopLoss ?? o.sl),
+    takeProfit: num(o.takeProfit ?? o.tp),
+    raw: o,
+  }
+}
+
+function inferOrderType(o: Record<string, unknown>): string {
+  const t = String(o.type ?? o.orderType ?? "").toLowerCase()
+  if (t.includes("stoploss") || t === "sl") return "StopLoss"
+  if (t.includes("takeprofit") || t === "tp") return "TakeProfit"
+  if (t.includes("market")) return "Market"
+  if (t.includes("limit")) return "Limit"
+  if (t.includes("stop")) return "Stop"
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : "Other"
 }
 
 function isTrue(v: unknown): boolean {
@@ -715,6 +797,7 @@ function objectToPosition(
     closedAt: status === "closed" ? tlTimestamp(r.lastModified ?? r.closeTime ?? r.closedAt ?? r.closeTimestamp ?? r.lastUpdateTimestamp) : null,
     contractSize,
     fills,
+    lifecycle: [], // /positions endpoint doesn't carry order history; populated for closed trades only
     raw: r,
   }
 }

@@ -22,7 +22,7 @@ import { usePnLDisplay } from "@/lib/pnl-display-context"
 import { pipsBetween } from "@/lib/pip"
 import { formatLotsOrSize } from "@/lib/lots"
 
-type Tab = "order" | "fills" | "replay" | "actions"
+type Tab = "order" | "fills" | "lifecycle" | "replay" | "actions"
 
 export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null; onClose: () => void }) {
   const router = useRouter()
@@ -154,7 +154,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
 
               {/* Tabs */}
               <div className="tab-row" style={{ gap: 2, borderBottom: "1px solid var(--c-border)", marginInline: -22, paddingInline: 22 }}>
-                {(["order", "fills", "replay", "actions"] as Tab[]).map((tb) => (
+                {(["order", "fills", "lifecycle", "replay", "actions"] as Tab[]).map((tb) => (
                   <button
                     key={tb}
                     onClick={() => setTab(tb)}
@@ -179,6 +179,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                   refresh={refresh}
                 />
               )}
+              {tab === "lifecycle" && <LifecyclePanel events={(t.lifecycle_events ?? []) as unknown[]} pair={t.pair} />}
               {tab === "replay" && <ReplayPanel tradeId={t.id} pair={t.pair} side={t.side} entryPrice={Number(t.entry_price)} exitPrice={t.exit_price != null ? Number(t.exit_price) : null} stopPrice={t.stop_price != null ? Number(t.stop_price) : null} targetPrice={t.target_price != null ? Number(t.target_price) : null} />}
               {tab === "actions" && (
                 <ActionsPanel
@@ -654,6 +655,156 @@ function ActionsPanel({
       {err && <div style={{ fontSize: 12, color: "var(--c-red-bright)" }}>{err}</div>}
     </div>
   )
+}
+
+// ─── Lifecycle tab (order-event timeline from broker) ────────────────────
+
+type LifecycleEvent = {
+  occurredAt?: string
+  orderId?: string
+  status?: string
+  type?: string
+  side?: string
+  isOpen?: boolean | null
+  size?: number | null
+  price?: number | null
+  filledPrice?: number | null
+  stopLoss?: number | null
+  takeProfit?: number | null
+}
+
+function LifecyclePanel({ events, pair }: { events: unknown[]; pair: string }) {
+  if (!Array.isArray(events) || events.length === 0) {
+    return (
+      <Section title="Lifecycle">
+        <div style={{ fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
+          <p style={{ margin: "0 0 6px" }}>No order-event timeline for this trade yet.</p>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--c-fg-dim)" }}>
+            Lifecycle history comes from broker-synced trades. Open the account drawer →
+            Connection tab → <em>Re-import all trades from TradeLocker</em> to populate
+            timelines for trades imported before this feature shipped.
+          </p>
+        </div>
+      </Section>
+    )
+  }
+
+  // Newest first reads more naturally for a single-trade view (entry at the
+  // bottom). Mirror what the user's broker UI shows in the screenshot.
+  const sorted = [...events as LifecycleEvent[]].sort(
+    (a, b) => new Date(b.occurredAt ?? 0).getTime() - new Date(a.occurredAt ?? 0).getTime(),
+  )
+
+  return (
+    <Section title={`Lifecycle (${sorted.length} events)`}>
+      <div style={{
+        display: "flex", flexDirection: "column",
+        background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)",
+        borderRadius: 8, overflow: "hidden",
+      }}>
+        {/* Header */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(110px, 1fr) 90px 100px 70px 80px minmax(120px, 1fr)",
+          gap: 10, padding: "8px 12px",
+          fontSize: 10, color: "var(--c-fg-muted)",
+          textTransform: "uppercase", letterSpacing: "0.05em",
+          borderBottom: "1px solid var(--c-border)",
+        }}>
+          <span>Time</span>
+          <span>Status</span>
+          <span>Type</span>
+          <span style={{ textAlign: "right" }}>Lots</span>
+          <span style={{ textAlign: "right" }}>Side</span>
+          <span style={{ textAlign: "right" }}>Detail</span>
+        </div>
+        {sorted.map((e, i) => (
+          <LifecycleRow key={`${e.orderId ?? i}-${e.status ?? i}-${e.occurredAt ?? i}`} event={e} pair={pair} last={i === sorted.length - 1} />
+        ))}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--c-fg-dim)", lineHeight: 1.5 }}>
+        Read top-down (newest first). Same view as your broker&apos;s order history,
+        scoped to this single position.
+      </div>
+    </Section>
+  )
+}
+
+function LifecycleRow({ event, pair, last }: { event: LifecycleEvent; pair: string; last: boolean }) {
+  const status = (event.status ?? "").trim()
+  const accent = statusAccent(status)
+  const dt = event.occurredAt ? new Date(event.occurredAt) : null
+  const dateStr = dt ? dt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—"
+
+  // Detail column: surface the most important field for this event type.
+  let detail: React.ReactNode = "—"
+  if (/fill/i.test(status) && event.filledPrice != null) {
+    detail = <span className="mono">@ {fmtPrice(event.filledPrice, pair)}</span>
+  } else if (event.type === "StopLoss" && event.stopLoss != null) {
+    detail = <span className="mono">SL → {fmtPrice(event.stopLoss, pair)}</span>
+  } else if (event.type === "TakeProfit" && event.takeProfit != null) {
+    detail = <span className="mono">TP → {fmtPrice(event.takeProfit, pair)}</span>
+  } else if (event.price != null) {
+    detail = <span className="mono">@ {fmtPrice(event.price, pair)}</span>
+  } else if (event.stopLoss != null || event.takeProfit != null) {
+    const parts: string[] = []
+    if (event.stopLoss != null) parts.push(`SL ${fmtPrice(event.stopLoss, pair)}`)
+    if (event.takeProfit != null) parts.push(`TP ${fmtPrice(event.takeProfit, pair)}`)
+    detail = <span className="mono" style={{ fontSize: 11 }}>{parts.join(" · ")}</span>
+  }
+
+  const sideLabel = event.side ? event.side.toUpperCase() : "—"
+  const sideColor = /buy/i.test(event.side ?? "") ? "var(--c-green-bright)" : /sell/i.test(event.side ?? "") ? "var(--c-red-bright)" : "var(--c-fg-muted)"
+
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "minmax(110px, 1fr) 90px 100px 70px 80px minmax(120px, 1fr)",
+      gap: 10, padding: "10px 12px",
+      borderBottom: last ? "none" : "1px solid var(--c-border)",
+      alignItems: "center", fontSize: 12,
+    }}>
+      <span className="mono" style={{ fontSize: 11, color: "var(--c-fg-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {dateStr}
+      </span>
+      <span style={{
+        fontSize: 10.5, fontWeight: 600,
+        textTransform: "uppercase", letterSpacing: "0.04em",
+        color: accent.color,
+        padding: "2px 6px",
+        background: accent.bg,
+        border: `1px solid ${accent.border}`,
+        borderRadius: 999, justifySelf: "flex-start",
+      }}>{status || "—"}</span>
+      <span style={{ fontSize: 11.5, color: "var(--c-fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {event.type || "—"}
+        {event.isOpen != null && (
+          <span style={{ marginLeft: 4, fontSize: 9, color: "var(--c-fg-dim)" }}>
+            {event.isOpen ? "OPEN" : "CLOSE"}
+          </span>
+        )}
+      </span>
+      <span className="tnum" style={{ textAlign: "right", fontSize: 11.5 }}>
+        {event.size != null ? event.size.toFixed(2) : "—"}
+      </span>
+      <span style={{ textAlign: "right", fontSize: 10.5, color: sideColor, fontWeight: 600 }}>
+        {sideLabel}
+      </span>
+      <span style={{ textAlign: "right", color: "var(--c-fg-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {detail}
+      </span>
+    </div>
+  )
+}
+
+function statusAccent(status: string): { color: string; bg: string; border: string } {
+  const s = status.toLowerCase()
+  if (s.includes("fill")) return { color: "var(--c-green-bright)", bg: "rgba(17, 196, 88, 0.10)", border: "rgba(17, 196, 88, 0.35)" }
+  if (s.includes("trigger")) return { color: "var(--c-amber)", bg: "rgba(229, 162, 59, 0.12)", border: "rgba(229, 162, 59, 0.35)" }
+  if (s.includes("cancel") || s.includes("reject")) return { color: "var(--c-red-bright)", bg: "rgba(190, 51, 61, 0.10)", border: "rgba(190, 51, 61, 0.35)" }
+  if (s.includes("replac") || s.includes("modif")) return { color: "var(--c-purple-bright)", bg: "rgba(105, 50, 212, 0.10)", border: "rgba(105, 50, 212, 0.35)" }
+  if (s.includes("placed")) return { color: "var(--c-fg-muted)", bg: "var(--c-bg-elev-3)", border: "var(--c-border)" }
+  return { color: "var(--c-fg-muted)", bg: "var(--c-bg-elev-3)", border: "var(--c-border)" }
 }
 
 // ─── Replay tab (Polygon candles + entry/stop/target/exit markers) ───────

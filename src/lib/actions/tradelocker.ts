@@ -5,7 +5,7 @@ import { z } from "zod"
 import { createClient as createServiceRoleClient, type SupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { computePnL } from "@/lib/finance"
-import type { Database } from "@/lib/supabase/database.types"
+import type { Database, Json } from "@/lib/supabase/database.types"
 import {
   tlGetAccounts,
   tlClosePosition,
@@ -266,6 +266,10 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
     status: p.status,
     notes: `Synced from TradeLocker (${env}).`,
     tags: ["tradelocker"],
+    // Lifecycle is the full chronological order-event timeline for this
+    // position. Coerced through JSON.parse(JSON.stringify(...)) so any
+    // unexpected runtime types in `raw` don't break Supabase's Json type.
+    lifecycle_events: JSON.parse(JSON.stringify(p.lifecycle)) as Json,
   }))
 
   let upserted = 0
