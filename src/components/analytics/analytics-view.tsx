@@ -4,6 +4,12 @@ import { useMemo, useState } from "react"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { CumulativeCurve } from "./cumulative-curve"
+import { StopTargetAnalysis } from "./stop-target-analysis"
+import { HoldTimeAnalysis } from "./hold-time-analysis"
+import { MoodAnalysis } from "./mood-analysis"
+import { RiskSizingAnalysis } from "./risk-sizing-analysis"
+import { DrawdownAnalysis } from "./drawdown-analysis"
+import { MonthlyComparison } from "./monthly-comparison"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 
 type Range = "7D" | "30D" | "90D" | "All"
@@ -62,6 +68,24 @@ export function AnalyticsView({
 
       {/* Coach insights */}
       <CoachInsights trades={filtered} entriesByTrade={entriesByTrade} playbookMap={playbookMap} />
+
+      {/* Stop-Loss & Take-Profit deep dive */}
+      <StopTargetAnalysis trades={filtered} />
+
+      {/* Hold-time + Mood */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
+        <HoldTimeAnalysis trades={filtered} />
+        <MoodAnalysis trades={filtered} />
+      </div>
+
+      {/* Risk sizing + Drawdown */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
+        <RiskSizingAnalysis trades={filtered} />
+        <DrawdownAnalysis trades={filtered} />
+      </div>
+
+      {/* Monthly comparison — uses ALL closed (ignores range filter intentionally) */}
+      <MonthlyComparison trades={closed} />
 
       {/* Pair + Setup breakdowns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>

@@ -19,6 +19,8 @@ import { SessionClock } from "@/components/dashboard/session-clock"
 import { PlaybooksCard } from "@/components/dashboard/playbooks-card"
 import { CalendarCard } from "@/components/dashboard/calendar-card"
 import { MoodCheckIn } from "@/components/dashboard/mood-checkin"
+import { PipStatsCard } from "@/components/dashboard/pip-stats-card"
+import { StreakCard } from "@/components/dashboard/streak-card"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 
 export default async function DashboardPage() {
@@ -50,6 +52,11 @@ export default async function DashboardPage() {
       <CoachNudge stats={stats} />
 
       <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
+        <PipStatsCard trades={recentTrades} />
+        <StreakCard trades={recentTrades} periodLabel="recent" />
+      </div>
 
       <div className="grid-2-1">
         <EquityCurveCard points={equity} />
