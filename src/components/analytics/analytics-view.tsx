@@ -10,7 +10,13 @@ import { MoodAnalysis } from "./mood-analysis"
 import { RiskSizingAnalysis } from "./risk-sizing-analysis"
 import { DrawdownAnalysis } from "./drawdown-analysis"
 import { MonthlyComparison } from "./monthly-comparison"
+import { SessionAnalysis } from "./session-analysis"
+import { PairSideMatrix } from "./pair-side-matrix"
+import { RuleBreakImpact } from "./rule-break-impact"
+import { CalendarHeatmap } from "./calendar-heatmap"
+import { ScaleOutAnalysis } from "./scale-out-analysis"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
+import type { TradeFill } from "@/lib/queries/trade-fills"
 
 type Range = "7D" | "30D" | "90D" | "All"
 const RANGES: Range[] = ["7D", "30D", "90D", "All"]
@@ -20,11 +26,13 @@ export function AnalyticsView({
   entriesByTrade,
   playbookMap,
   accountMap,
+  fillsByTrade,
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
   playbookMap: Map<string, string>
   accountMap: Map<string, string>
+  fillsByTrade: Map<string, TradeFill[]>
 }) {
   const [range, setRange] = useState<Range>("30D")
 
@@ -72,6 +80,9 @@ export function AnalyticsView({
       {/* Stop-Loss & Take-Profit deep dive */}
       <StopTargetAnalysis trades={filtered} />
 
+      {/* Scale-out analysis — relies on trade_fills */}
+      <ScaleOutAnalysis trades={filtered} fillsByTrade={fillsByTrade} />
+
       {/* Hold-time + Mood */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
         <HoldTimeAnalysis trades={filtered} />
@@ -84,8 +95,18 @@ export function AnalyticsView({
         <DrawdownAnalysis trades={filtered} />
       </div>
 
+      {/* Session edge + Pair × Side matrix */}
+      <SessionAnalysis trades={filtered} />
+      <PairSideMatrix trades={filtered} />
+
+      {/* Rule-break impact (uses journal entries) */}
+      <RuleBreakImpact trades={filtered} entriesByTrade={entriesByTrade} />
+
       {/* Monthly comparison — uses ALL closed (ignores range filter intentionally) */}
       <MonthlyComparison trades={closed} />
+
+      {/* Calendar heatmap — last 12 months across the entire account */}
+      <CalendarHeatmap trades={closed} />
 
       {/* Pair + Setup breakdowns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>

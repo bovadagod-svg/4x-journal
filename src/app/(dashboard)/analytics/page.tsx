@@ -3,6 +3,7 @@ import { SectionStub } from "@/components/shell/section-stub"
 import { SECTION_META } from "@/lib/sections"
 import { Icon } from "@/components/icons"
 import { getJournalEntries, getUserTrades } from "@/lib/queries/trades"
+import { getFillsForTrades } from "@/lib/queries/trade-fills"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { AnalyticsView } from "@/components/analytics/analytics-view"
@@ -42,6 +43,10 @@ export default async function AnalyticsPage() {
   const playbookMap = new Map(playbooks.map((p) => [p.id, p.name]))
   const accountMap = new Map(accounts.map((a) => [a.id, `${a.broker} · ${a.label}`]))
 
+  // Fetch fills for closed trades only — scale-out analysis needs per-fill data.
+  const closedIds = trades.filter((t) => t.status === "closed").map((t) => t.id)
+  const fillsByTrade = await getFillsForTrades(closedIds)
+
   return (
     <>
       <SectionHeader
@@ -59,6 +64,7 @@ export default async function AnalyticsPage() {
         entriesByTrade={entriesByTrade}
         playbookMap={playbookMap}
         accountMap={accountMap}
+        fillsByTrade={fillsByTrade}
       />
     </>
   )
