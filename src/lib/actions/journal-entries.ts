@@ -256,3 +256,83 @@ export async function getJournalEntry(id: string) {
   if (error || !data) return null
   return data
 }
+
+/**
+ * Create an empty idea entry and return its id, so the drawer can open
+ * straight onto a fresh idea. Used by the Log Idea button.
+ */
+export async function createEmptyIdeaEntry(): Promise<EntrySaveResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const { data, error } = await supabase
+    .from("journal_entries")
+    .insert({ user_id: user.id, kind: "idea" })
+    .select("id")
+    .single()
+  if (error || !data) return { ok: false, error: error?.message ?? "Insert failed" }
+  revalidatePath("/journal")
+  return { ok: true, id: data.id }
+}
+
+export type ShareTokenResult =
+  | { ok: true; token: string | null }
+  | { ok: false; error: string }
+
+/**
+ * Generate a one-shot share token for a single journal entry. Idempotent:
+ * if the entry already has a token, returns the existing one (the user can
+ * revoke + regenerate to rotate it). The token IS the access control —
+ * leaking it leaks the entry, so generate-on-demand and let the user copy
+ * the URL once.
+ */
+export async function generateShareToken(entryId: string): Promise<ShareTokenResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  // Caller must own the entry; the update WHERE clause + RLS enforces it,
+  // but we read first to give a clean error and to skip a needless write.
+  const { data: existing, error: readErr } = await supabase
+    .from("journal_entries")
+    .select("share_token, user_id")
+    .eq("id", entryId)
+    .maybeSingle()
+  if (readErr || !existing) return { ok: false, error: readErr?.message ?? "Entry not found." }
+  if (existing.user_id !== user.id) return { ok: false, error: "Not your entry." }
+  if (existing.share_token) return { ok: true, token: existing.share_token }
+
+  // 32 bytes of entropy → 43 url-safe base64 chars. Plenty.
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  const token = base64Url(bytes)
+
+  const { error } = await supabase
+    .from("journal_entries")
+    .update({ share_token: token })
+    .eq("id", entryId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/journal")
+  return { ok: true, token }
+}
+
+/**
+ * Revoke an existing share token. Subsequent visits to the share URL 404.
+ */
+export async function revokeShareToken(entryId: string): Promise<ShareTokenResult> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("journal_entries")
+    .update({ share_token: null })
+    .eq("id", entryId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/journal")
+  return { ok: true, token: null }
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let str = ""
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i])
+  return btoa(str).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")
+}

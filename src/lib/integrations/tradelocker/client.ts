@@ -41,6 +41,17 @@ export type TLAccount = {
   raw: unknown
 }
 
+export type TLOrderMeta = {
+  commission: number | null
+  swap: number | null
+  tax: number | null
+  requestPrice: number | null
+  orderType: string | null
+  executionType: string | null
+  magicNumber: string | null
+  comment: string | null
+}
+
 export type TLPosition = {
   externalId: string
   pair: string
@@ -54,6 +65,8 @@ export type TLPosition = {
   status: "open" | "closed"
   openedAt: string
   closedAt: string | null
+  entryMeta: TLOrderMeta
+  exitMeta: TLOrderMeta | null
   raw: unknown
 }
 
@@ -208,6 +221,11 @@ export type TLAccountState = {
   balance: number | null
   projectedBalance: number | null
   availableFunds: number | null
+  marginUsed: number | null
+  freeMargin: number | null
+  marginLevel: number | null
+  floatingPnl: number | null
+  swapTotal: number | null
   raw: Record<string, unknown> | null
 }
 
@@ -450,6 +468,8 @@ function reconstructClosedTrades(
       status: "closed",
       openedAt: tlTimestamp(opener.lastModified ?? opener.createdDate) ?? new Date().toISOString(),
       closedAt: tlTimestamp(closer.lastModified ?? closer.createdDate),
+      entryMeta: extractOrderMeta(opener),
+      exitMeta: extractOrderMeta(closer),
       raw: { opener, closer, allOrders: orders },
     })
   }
@@ -483,6 +503,11 @@ function decodeAccountState(body: unknown, columns: string[]): TLAccountState | 
     balance: num(obj.balance),
     projectedBalance: num(obj.projectedBalance),
     availableFunds: num(obj.availableFunds),
+    marginUsed: num(obj.marginUsed ?? obj.usedMargin ?? obj.margin),
+    freeMargin: num(obj.freeMargin ?? obj.marginAvailable ?? obj.availableMargin),
+    marginLevel: num(obj.marginLevel ?? obj.marginLevelPct),
+    floatingPnl: num(obj.unrealizedPl ?? obj.floatingPl ?? obj.floatingProfitLoss ?? obj.openPl),
+    swapTotal: num(obj.swap ?? obj.swapTotal ?? obj.cumulativeSwap),
     raw: obj,
   }
 }
@@ -589,6 +614,8 @@ function objectToPosition(
     status,
     openedAt: tlTimestamp(r.openDate ?? r.createdDate ?? r.openTime ?? r.openedAt ?? r.openTimestamp ?? r.timestamp) ?? new Date().toISOString(),
     closedAt: status === "closed" ? tlTimestamp(r.lastModified ?? r.closeTime ?? r.closedAt ?? r.closeTimestamp ?? r.lastUpdateTimestamp) : null,
+    entryMeta: extractOrderMeta(r),
+    exitMeta: null,
     raw: r,
   }
 }
@@ -619,6 +646,28 @@ function trim(body: unknown): unknown {
   }
 }
 
+function extractOrderMeta(r: Record<string, unknown>): TLOrderMeta {
+  const orderTypeRaw = r.orderType ?? r.type ?? r.orderKind
+  const executionTypeRaw = r.executionType ?? r.execType ?? r.executionKind
+  const magicRaw = r.magicNumber ?? r.magic ?? r.expertId
+  const commentRaw = r.comment ?? r.brokerComment ?? r.userComment ?? r.note
+  const orderType = typeof orderTypeRaw === "string"
+    ? orderTypeRaw.toLowerCase()
+    : orderTypeRaw != null ? String(orderTypeRaw).toLowerCase() : null
+  return {
+    commission: num(r.commission ?? r.commissions ?? r.fee ?? r.fees),
+    swap: num(r.swap ?? r.swapTotal ?? r.swapValue ?? r.rollover),
+    tax: num(r.tax ?? r.taxes),
+    requestPrice: num(r.requestPrice ?? r.requestedPrice ?? r.requested ?? r.priceRequested),
+    orderType: orderType && orderType.length > 0 ? orderType : null,
+    executionType: typeof executionTypeRaw === "string" && executionTypeRaw
+      ? executionTypeRaw.toLowerCase()
+      : executionTypeRaw != null ? String(executionTypeRaw).toLowerCase() : null,
+    magicNumber: magicRaw != null && magicRaw !== "" ? String(magicRaw) : null,
+    comment: typeof commentRaw === "string" && commentRaw ? commentRaw : null,
+  }
+}
+
 function inferSide(r: Record<string, unknown>): "long" | "short" {
   const s = String(r.side ?? r.direction ?? "").toLowerCase()
   if (s.includes("buy") || s.includes("long")) return "long"
@@ -644,6 +693,107 @@ function prettyPair(symbol: string): string {
   if (symbol.length === 6) return `${symbol.slice(0, 3)}/${symbol.slice(3)}`.toUpperCase()
   if (symbol.length === 7 && symbol.startsWith("XAU")) return `XAU/${symbol.slice(3)}`.toUpperCase()
   return symbol.toUpperCase()
+}
+
+/**
+ * Live bid/ask quote for a single TL instrument. TL's quotes endpoint is
+ * /trade/quotes/{instrumentId}?routeId=... and returns the latest tick.
+ *
+ * Returns null on miss / error so callers can skip a single bad symbol
+ * without losing the rest of the batch.
+ */
+export async function tlGetQuote(args: {
+  env: TradeLockerEnv
+  accessToken: string
+  accNum: string
+  instrumentId: string
+  routeId?: string
+}): Promise<{ bid: number | null; ask: number | null; ts: string } | null> {
+  const base = TL_BASE_URL[args.env]
+  const path = `/trade/quotes/${args.instrumentId}${args.routeId ? `?routeId=${args.routeId}` : ""}`
+  try {
+    const r = await tlFetch(base, path, {
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        accNum: args.accNum,
+        "acc-num": args.accNum,
+      },
+    })
+    const obj = (r.body && typeof r.body === "object" && "d" in r.body
+      ? (r.body as { d: unknown }).d
+      : r.body) as Record<string, unknown> | null
+    if (!obj || typeof obj !== "object") return null
+    const o = obj as Record<string, unknown>
+    return {
+      bid: num(o.bp ?? o.bid ?? o.bidPrice),
+      ask: num(o.ap ?? o.ask ?? o.askPrice),
+      ts: new Date().toISOString(),
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Modify an open position's SL / TP. Pass null/undefined to leave a side alone.
+ * TL accepts PATCH on /trade/positions/{positionId} with body keys
+ * stopLoss / takeProfit.
+ */
+export async function tlModifyPosition(args: {
+  env: TradeLockerEnv
+  accessToken: string
+  accNum: string
+  positionId: string
+  stopLoss?: number | null
+  takeProfit?: number | null
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const base = TL_BASE_URL[args.env]
+  const body: Record<string, number> = {}
+  if (args.stopLoss != null) body.stopLoss = args.stopLoss
+  if (args.takeProfit != null) body.takeProfit = args.takeProfit
+  if (Object.keys(body).length === 0) return { ok: false, status: 400, error: "Nothing to modify." }
+  try {
+    await tlFetch(base, `/trade/positions/${args.positionId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        accNum: args.accNum,
+        "acc-num": args.accNum,
+      },
+      body: JSON.stringify(body),
+    })
+    return { ok: true }
+  } catch (e) {
+    if (e instanceof TLError) return { ok: false, status: e.status, error: e.message }
+    return { ok: false, status: 0, error: e instanceof Error ? e.message : "TL modify failed" }
+  }
+}
+
+/**
+ * Close an open position at market. TL accepts DELETE on
+ * /trade/positions/{positionId}.
+ */
+export async function tlClosePosition(args: {
+  env: TradeLockerEnv
+  accessToken: string
+  accNum: string
+  positionId: string
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const base = TL_BASE_URL[args.env]
+  try {
+    await tlFetch(base, `/trade/positions/${args.positionId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        accNum: args.accNum,
+        "acc-num": args.accNum,
+      },
+    })
+    return { ok: true }
+  } catch (e) {
+    if (e instanceof TLError) return { ok: false, status: e.status, error: e.message }
+    return { ok: false, status: 0, error: e instanceof Error ? e.message : "TL close failed" }
+  }
 }
 
 export { TLError }

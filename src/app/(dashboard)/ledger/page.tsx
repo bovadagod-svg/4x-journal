@@ -25,8 +25,8 @@ export default async function LedgerPage() {
         />
         <SectionStub
           icon={m.icon}
-          title="Your ledger is empty"
-          description="Every trade you log lands here — entry, exit, R, P&L, mood, rules. Tap “Log Trade” in the top bar (or the button up there ↑) to add your first."
+          title="No trades yet"
+          description="Every trade you log lands here — entry, exit, R, P&L, mood, rules. Three ways to fill it: press c to open the log-trade modal, sync a TradeLocker account from /accounts, or paste a CSV from any broker."
         />
       </>
     )

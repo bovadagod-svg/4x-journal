@@ -149,8 +149,38 @@ export default async function ReportsPage() {
             </form>
           </ReportTile>
 
+          {/* Form 8949 (FIFO) */}
+          <ReportTile
+            icon="reports"
+            color="#11C458"
+            title="Form 8949 (FIFO)"
+            description={
+              election === "988"
+                ? "IRS Form 8949 line items by tax lot — short/long-term split. Wash-sale flagging is off (Section 988 election)."
+                : "IRS Form 8949 line items — short/long-term split, FIFO matching, wash-sale flagging on."
+            }
+            badge="Year-end"
+          >
+            <form method="get" action="/api/reports/form-8949" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Field label="Tax year">
+                  <input name="year" type="number" min={2000} max={2100} step={1} defaultValue={taxYear} required style={input} />
+                </Field>
+                <Field label="Account">
+                  <select name="account" defaultValue="all" style={input}>
+                    <option value="all">All accounts</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.broker} · {a.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                <Icon name="external" size={13} />
+                <span>Download CSV</span>
+              </button>
+            </form>
+          </ReportTile>
+
           {/* Roadmap tiles */}
-          <RoadmapTile icon="reports" color="#11C458" title="Tax Statement (PDF)" desc="IRS 8949 / Schedule D ready P&L by account, organized by tax lot." />
           <RoadmapTile icon="accounts" color="#4312A0" title="Prop Firm Statement" desc="FunderPro / FTMO compliant — daily DD, profit target, payouts." />
           <RoadmapTile icon="playbook" color="#BE333D" title="Playbook Audit" desc="Per-setup expectancy, win rate, sample trades and rule adherence." />
         </div>

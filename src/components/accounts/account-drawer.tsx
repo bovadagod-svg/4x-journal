@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Icon } from "@/components/icons"
 import { Sparkline } from "@/components/charts/sparkline"
 import { formatUSD } from "@/lib/finance"
+import { marginStatusColor, MARGIN_COLOR_VAR } from "@/lib/status"
 import { deleteAccount, setDefaultAccount } from "@/lib/actions/accounts"
 import { AccountFormModal } from "./account-form-modal"
 import { SyncTradeLockerButton } from "./sync-button"
@@ -123,6 +124,24 @@ export function AccountDrawer({
         <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
           {tab === "overview" && (
             <>
+              {account.margin_level != null && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  <Cell label="Equity" value={formatUSD(Number(account.equity))} />
+                  <Cell
+                    label="Free margin"
+                    value={account.free_margin != null ? formatUSD(Number(account.free_margin)) : "—"}
+                  />
+                  <Cell
+                    label="Margin used"
+                    value={account.margin_used != null ? formatUSD(Number(account.margin_used)) : "—"}
+                  />
+                  <Cell
+                    label="Margin level"
+                    value={`${Number(account.margin_level).toFixed(0)}%`}
+                    color={MARGIN_COLOR_VAR[marginStatusColor(Number(account.margin_level))]}
+                  />
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                 <Cell label="Balance" value={formatUSD(Number(account.balance))} />
                 <Cell label="Equity" value={formatUSD(Number(account.equity))} />
@@ -234,11 +253,11 @@ export function AccountDrawer({
   )
 }
 
-function Cell({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Cell({ label, value, mono, color }: { label: string; value: string; mono?: boolean; color?: string }) {
   return (
     <div style={{ background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 10 }}>
       <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-      <div className={mono ? "mono" : "tnum"} style={{ fontSize: 12.5, marginTop: 2, textTransform: mono ? "capitalize" : "none" }}>{value}</div>
+      <div className={mono ? "mono" : "tnum"} style={{ fontSize: 12.5, marginTop: 2, textTransform: mono ? "capitalize" : "none", color: color ?? "var(--c-fg)", fontWeight: color ? 600 : undefined }}>{value}</div>
     </div>
   )
 }

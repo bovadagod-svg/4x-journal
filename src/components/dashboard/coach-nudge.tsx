@@ -94,9 +94,47 @@ export function CoachNudge({ stats }: { stats: OverallStats | null }) {
               Reading your last 30 days…
             </p>
           ) : aiAvailable && state.ok ? (
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
-              {state.insights.map((s, i) => <li key={i} style={{ marginBottom: i < state.insights.length - 1 ? 4 : 0 }}>{s}</li>)}
-            </ul>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
+                {state.payload.observations.map((s, i) => (
+                  <li key={i} style={{ marginBottom: i < state.payload.observations.length - 1 ? 4 : 0 }}>{s}</li>
+                ))}
+              </ul>
+              {state.payload.suggestions.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+                    Suggested actions
+                  </div>
+                  {state.payload.suggestions.map((s, i) => {
+                    const isWarn = s.severity === "warn"
+                    const accent = isWarn ? "var(--c-amber)" : "var(--c-purple-bright)"
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          background: isWarn ? "rgba(229, 162, 59, 0.08)" : "rgba(105, 50, 212, 0.08)",
+                          border: `1px solid ${isWarn ? "rgba(229, 162, 59, 0.3)" : "rgba(105, 50, 212, 0.25)"}`,
+                          display: "flex", gap: 8, alignItems: "flex-start",
+                        }}
+                      >
+                        <span style={{
+                          fontSize: 9, fontWeight: 700,
+                          color: accent,
+                          textTransform: "uppercase", letterSpacing: "0.06em",
+                          marginTop: 2, flexShrink: 0,
+                        }}>{s.severity}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--c-fg)" }}>{s.action}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)", lineHeight: 1.45, marginTop: 2 }}>{s.basis}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           ) : aiNotConfigured ? (
             <div style={{ fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
               <p style={{ margin: "0 0 6px" }}>

@@ -7,7 +7,11 @@ export default function BacktestPage() {
   return (
     <>
       <SectionHeader title={m.title} subtitle={m.subtitle} />
-      <SectionStub icon={m.icon} title={m.title} description="Backtesting is parked beyond Phase 9 — first we make sure the journaling loop is solid." />
+      <SectionStub
+        icon={m.icon}
+        title="Backtesting · paused"
+        description="A meaningful backtest needs both a deep historical-data feed and ≥100 trades on a single playbook to compare against. Until you have that sample, the Risk-of-Ruin and Monte Carlo cards on Analytics give you forward-projection from the same math — open Analytics to see them."
+      />
     </>
   )
 }

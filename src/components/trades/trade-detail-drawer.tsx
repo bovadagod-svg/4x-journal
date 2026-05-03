@@ -13,10 +13,15 @@ import {
   deleteTrade,
   type TradeDetail,
 } from "@/lib/actions/trades"
+import { brokerClosePosition, brokerModifyPosition } from "@/lib/actions/tradelocker"
+import { getReplayCandles, getTradeContext, type ReplayResult, type ContextResult } from "@/lib/actions/trade-replay"
+
+type Aggregate = { ts: number; open: number; high: number; low: number; close: number; volume: number }
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
+import { pipsBetween } from "@/lib/pip"
 
-type Tab = "order" | "fills" | "actions"
+type Tab = "order" | "fills" | "replay" | "actions"
 
 export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null; onClose: () => void }) {
   const router = useRouter()
@@ -56,6 +61,8 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
   const totalEntrySize = entryFills.reduce((s, f) => s + Number(f.size), 0)
   const totalExitSize = exitFills.reduce((s, f) => s + Number(f.size), 0)
   const remainingSize = totalEntrySize - totalExitSize
+  const primaryEntry = entryFills.find((f) => f.order_type) ?? entryFills[0] ?? null
+  const entryOrderType = primaryEntry?.order_type ?? null
 
   return (
     <>
@@ -83,6 +90,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                       <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600 }}>{t.pair}</h2>
                       <SideChip side={t.side} />
                       <StatusChip status={t.status} />
+                      <OrderTypeChip type={entryOrderType} />
                     </div>
                     <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)", marginTop: 2 }}>
                       {detail.account ? `${detail.account.broker} · ${detail.account.label}` : "—"}
@@ -138,7 +146,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
 
               {/* Tabs */}
               <div className="tab-row" style={{ gap: 2, borderBottom: "1px solid var(--c-border)", marginInline: -22, paddingInline: 22 }}>
-                {(["order", "fills", "actions"] as Tab[]).map((tb) => (
+                {(["order", "fills", "replay", "actions"] as Tab[]).map((tb) => (
                   <button
                     key={tb}
                     onClick={() => setTab(tb)}
@@ -153,7 +161,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
 
             {/* Body */}
             <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
-              {tab === "order" && <OrderPanel detail={detail} totalEntrySize={totalEntrySize} totalExitSize={totalExitSize} />}
+              {tab === "order" && <OrderPanel detail={detail} totalEntrySize={totalEntrySize} totalExitSize={totalExitSize} primaryEntry={primaryEntry} />}
               {tab === "fills" && (
                 <FillsPanel
                   detail={detail}
@@ -163,6 +171,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                   refresh={refresh}
                 />
               )}
+              {tab === "replay" && <ReplayPanel tradeId={t.id} pair={t.pair} side={t.side} entryPrice={Number(t.entry_price)} exitPrice={t.exit_price != null ? Number(t.exit_price) : null} stopPrice={t.stop_price != null ? Number(t.stop_price) : null} targetPrice={t.target_price != null ? Number(t.target_price) : null} />}
               {tab === "actions" && (
                 <ActionsPanel
                   detail={detail}
@@ -182,17 +191,50 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
 // ─── Order tab ───────────────────────────────────────────────────────────
 
 function OrderPanel({
-  detail, totalEntrySize, totalExitSize,
+  detail, totalEntrySize, totalExitSize, primaryEntry,
 }: {
   detail: NonNullable<TradeDetail>
   totalEntrySize: number
   totalExitSize: number
+  primaryEntry: NonNullable<TradeDetail>["fills"][number] | null
 }) {
   const t = detail.trade
   const placedAt = new Date(t.created_at).toLocaleString()
   const openedAt = t.opened_at ? new Date(t.opened_at).toLocaleString() : null
   const closedAt = t.closed_at ? new Date(t.closed_at).toLocaleString() : null
   const cancelledAt = t.cancelled_at ? new Date(t.cancelled_at).toLocaleString() : null
+
+  // Slippage = signed pip distance between requested and filled price.
+  // Positive = fill better than requested; negative = filled worse (cost).
+  const slippagePips = useMemo(() => {
+    const req = primaryEntry?.request_price != null ? Number(primaryEntry.request_price) : null
+    const filled = primaryEntry?.price != null ? Number(primaryEntry.price) : null
+    if (req == null || filled == null || !isFinite(req) || !isFinite(filled)) return null
+    const abs = pipsBetween(req, filled, t.pair)
+    if (abs === 0) return 0
+    // Long: fill above request = worse (paid more). Short: fill below request = worse.
+    const worse = t.side === "long" ? filled > req : filled < req
+    return worse ? -abs : abs
+  }, [primaryEntry, t.pair, t.side])
+
+  // Aggregate broker costs across all fills (entry + exit).
+  const costs = useMemo(() => {
+    let commission = 0
+    let swap = 0
+    let tax = 0
+    let any = false
+    for (const f of detail.fills) {
+      if (f.commission != null) { commission += Number(f.commission); any = true }
+      if (f.swap != null) { swap += Number(f.swap); any = true }
+      if (f.tax != null) { tax += Number(f.tax); any = true }
+    }
+    return { commission, swap, tax, any }
+  }, [detail.fills])
+
+  const grossPnl = t.pnl != null ? Number(t.pnl) : null
+  const netPnl = grossPnl != null && costs.any
+    ? grossPnl - costs.commission - costs.swap - costs.tax
+    : null
 
   const plannedR = useMemo(() => {
     if (t.stop_price == null || t.target_price == null) return null
@@ -225,7 +267,24 @@ function OrderPanel({
       {/* Prices */}
       <Section title="Order">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-          <Cell label={t.status === "pending" ? "Limit / stop price" : "Avg entry"} value={fmtPrice(Number(t.entry_price), t.pair)} mono />
+          <Cell
+            label={t.status === "pending" ? "Limit / stop price" : "Avg entry"}
+            value={fmtPrice(Number(t.entry_price), t.pair)}
+            mono
+            badge={slippagePips != null
+              ? {
+                  text: `${slippagePips > 0 ? "+" : ""}${slippagePips.toFixed(1)}p`,
+                  color: slippagePips > 0
+                    ? "var(--c-green-bright)"
+                    : slippagePips < 0
+                      ? "var(--c-red-bright)"
+                      : "var(--c-fg-muted)",
+                  title: primaryEntry?.request_price != null
+                    ? `Requested ${fmtPrice(Number(primaryEntry.request_price), t.pair)} · filled ${fmtPrice(Number(t.entry_price), t.pair)}`
+                    : undefined,
+                }
+              : undefined}
+          />
           <Cell label="Stop" value={t.stop_price != null ? fmtPrice(Number(t.stop_price), t.pair) : "—"} mono />
           <Cell label="Target" value={t.target_price != null ? fmtPrice(Number(t.target_price), t.pair) : "—"} mono />
           <Cell label="Avg exit" value={t.exit_price != null ? fmtPrice(Number(t.exit_price), t.pair) : "—"} mono />
@@ -249,6 +308,23 @@ function OrderPanel({
           </div>
         </Section>
       )}
+
+      {/* Broker costs (only shown when broker reports any of commission/swap/tax) */}
+      {costs.any && (
+        <Section title="Costs">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+            <Cell label="Commission" value={formatUSD(-Math.abs(costs.commission), { signed: true })} mono />
+            <Cell label="Swap" value={formatUSD(costs.swap, { signed: true })} mono />
+            {costs.tax !== 0 && <Cell label="Tax" value={formatUSD(-Math.abs(costs.tax), { signed: true })} mono />}
+            {netPnl != null && (
+              <Cell label="Net P&L" value={formatUSD(netPnl, { signed: true })} mono />
+            )}
+          </div>
+        </Section>
+      )}
+
+      {/* Macro context (DXY / SPX / VIX at trade entry) — Polygon scaffold */}
+      <ContextRow tradeId={t.id} />
 
       {/* Tags + notes */}
       {t.tags && t.tags.length > 0 && (
@@ -539,6 +615,19 @@ function ActionsPanel({
         </Section>
       )}
 
+      {/* Broker actions — only for open TradeLocker-synced trades */}
+      {t.status === "open" && t.external_provider === "tradelocker" && t.external_id && (
+        <BrokerActions
+          tradeId={t.id}
+          pair={t.pair}
+          side={t.side}
+          entryPrice={Number(t.entry_price)}
+          stopPrice={t.stop_price != null ? Number(t.stop_price) : null}
+          targetPrice={t.target_price != null ? Number(t.target_price) : null}
+          refresh={refresh}
+        />
+      )}
+
       <Section title="Journal">
         <button type="button" onClick={onOpenJournal} className="btn" style={{ width: "100%", justifyContent: "flex-start", padding: "10px 12px" }}>
           <Icon name="journal" size={13} />
@@ -558,6 +647,361 @@ function ActionsPanel({
   )
 }
 
+// ─── Replay tab (Polygon candles + entry/stop/target/exit markers) ───────
+
+function ReplayPanel({
+  tradeId, pair, side, entryPrice, exitPrice, stopPrice, targetPrice,
+}: {
+  tradeId: string
+  pair: string
+  side: string
+  entryPrice: number
+  exitPrice: number | null
+  stopPrice: number | null
+  targetPrice: number | null
+}) {
+  const [tf, setTf] = useState<"M5" | "M15" | "H1" | "H4" | "D1">("H1")
+  const [state, setState] = useState<ReplayResult | null>(null)
+  const [pending, startLoad] = useTransition()
+
+  useEffect(() => {
+    startLoad(async () => {
+      const r = await getReplayCandles({ tradeId, timeframe: tf })
+      setState(r)
+    })
+  }, [tradeId, tf])
+
+  if (!state || pending) {
+    return <Section title="Replay"><div style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>Loading {pair} candles…</div></Section>
+  }
+
+  if (!state.ok) {
+    return (
+      <Section title="Replay">
+        {state.configured ? (
+          <div style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>{state.error}</div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>
+            <p style={{ margin: "0 0 8px" }}>Trade replay needs a Polygon.io API key.</p>
+            <p style={{ margin: 0, color: "var(--c-fg-dim)" }}>
+              Set <code style={{ fontFamily: "var(--font-mono)" }}>POLYGON_API_KEY</code> in your environment to fetch
+              candles for past trades. Free tier covers FX majors.
+            </p>
+          </div>
+        )}
+      </Section>
+    )
+  }
+
+  return (
+    <Section title="Replay">
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+        {(["M5", "M15", "H1", "H4", "D1"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTf(t)}
+            className={`tab ${t === tf ? "active" : ""}`}
+            style={{ padding: "4px 10px", fontSize: 11.5, borderRadius: 6 }}
+          >{t}</button>
+        ))}
+      </div>
+      <CandleChart
+        bars={state.bars}
+        entryTs={state.entryTs}
+        exitTs={state.exitTs}
+        entryPrice={entryPrice}
+        exitPrice={exitPrice}
+        stopPrice={stopPrice}
+        targetPrice={targetPrice}
+        side={side}
+      />
+      <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", marginTop: 6 }}>
+        {state.bars.length} bars · {state.ticker} · {state.timeframe} · entry/exit/stop/target marked
+      </div>
+    </Section>
+  )
+}
+
+// Pure SVG candle chart — no chart library dep.
+function CandleChart({
+  bars, entryTs, exitTs, entryPrice, exitPrice, stopPrice, targetPrice, side,
+}: {
+  bars: Aggregate[]
+  entryTs: number
+  exitTs: number | null
+  entryPrice: number
+  exitPrice: number | null
+  stopPrice: number | null
+  targetPrice: number | null
+  side: string
+}) {
+  if (bars.length === 0) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>
+        No candles in window. Polygon may not carry this symbol on your plan.
+      </div>
+    )
+  }
+
+  const W = 540
+  const H = 240
+  const padX = 6
+  const padY = 12
+  const hi = Math.max(...bars.map((b) => b.high), entryPrice, exitPrice ?? -Infinity, stopPrice ?? -Infinity, targetPrice ?? -Infinity)
+  const lo = Math.min(...bars.map((b) => b.low),  entryPrice, exitPrice ??  Infinity, stopPrice ??  Infinity, targetPrice ??  Infinity)
+  const range = hi - lo || 1
+  const stepX = (W - padX * 2) / bars.length
+  const xFor = (i: number) => padX + i * stepX + stepX / 2
+  const yFor = (v: number) => H - padY - ((v - lo) / range) * (H - padY * 2)
+
+  const tsToIdx = (ts: number): number => {
+    let best = 0
+    let bestDelta = Infinity
+    for (let i = 0; i < bars.length; i++) {
+      const d = Math.abs(bars[i].ts - ts)
+      if (d < bestDelta) { best = i; bestDelta = d }
+    }
+    return best
+  }
+
+  const entryX = xFor(tsToIdx(entryTs))
+  const exitX = exitTs != null ? xFor(tsToIdx(exitTs)) : null
+  const candleWidth = Math.max(1, stepX * 0.7)
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ background: "var(--c-bg-elev-2)", borderRadius: 8, border: "1px solid var(--c-border)" }}>
+      {/* Stop / target / entry horizontal reference lines */}
+      {stopPrice != null && (
+        <line x1={padX} x2={W - padX} y1={yFor(stopPrice)} y2={yFor(stopPrice)} stroke="var(--c-red-bright)" strokeDasharray="3 3" strokeWidth={1} />
+      )}
+      {targetPrice != null && (
+        <line x1={padX} x2={W - padX} y1={yFor(targetPrice)} y2={yFor(targetPrice)} stroke="var(--c-green-bright)" strokeDasharray="3 3" strokeWidth={1} />
+      )}
+      <line x1={padX} x2={W - padX} y1={yFor(entryPrice)} y2={yFor(entryPrice)} stroke="var(--c-purple-bright)" strokeDasharray="2 4" strokeWidth={1} />
+
+      {/* Candles */}
+      {bars.map((b, i) => {
+        const x = xFor(i)
+        const up = b.close >= b.open
+        const color = up ? "var(--c-green-bright)" : "var(--c-red-bright)"
+        return (
+          <g key={i}>
+            <line x1={x} x2={x} y1={yFor(b.high)} y2={yFor(b.low)} stroke={color} strokeWidth={1} />
+            <rect
+              x={x - candleWidth / 2}
+              y={yFor(Math.max(b.open, b.close))}
+              width={candleWidth}
+              height={Math.max(1, Math.abs(yFor(b.open) - yFor(b.close)))}
+              fill={color}
+            />
+          </g>
+        )
+      })}
+
+      {/* Entry marker */}
+      <line x1={entryX} x2={entryX} y1={padY} y2={H - padY} stroke="var(--c-purple-bright)" strokeWidth={1} strokeDasharray="2 3" opacity={0.5} />
+      <circle cx={entryX} cy={yFor(entryPrice)} r={4} fill="var(--c-purple-bright)" />
+
+      {/* Exit marker */}
+      {exitX != null && exitPrice != null && (
+        <>
+          <line x1={exitX} x2={exitX} y1={padY} y2={H - padY} stroke={side === "long" && exitPrice >= entryPrice ? "var(--c-green-bright)" : "var(--c-red-bright)"} strokeWidth={1} strokeDasharray="2 3" opacity={0.5} />
+          <circle cx={exitX} cy={yFor(exitPrice)} r={4} fill={side === "long" && exitPrice >= entryPrice ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
+        </>
+      )}
+    </svg>
+  )
+}
+
+// ─── Macro context row (DXY / SPX / VIX at entry) ─────────────────────────
+
+function ContextRow({ tradeId }: { tradeId: string }) {
+  const [state, setState] = useState<ContextResult | null>(null)
+  useEffect(() => {
+    void getTradeContext(tradeId).then(setState)
+  }, [tradeId])
+
+  if (!state) return null
+
+  if (!state.ok) {
+    if (!state.configured) return null  // hide entirely when Polygon isn't set up
+    return null
+  }
+
+  const s = state.snapshot
+  // If we got nothing meaningful, don't render an empty card.
+  if (s.dxy == null && s.spx == null && s.vix == null) return null
+
+  return (
+    <Section title="Context at entry">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+        {s.dxy != null && (
+          <Cell
+            label="DXY"
+            value={s.dxy.toFixed(2)}
+            mono
+            badge={s.dxyPctChange1d != null ? {
+              text: `${s.dxyPctChange1d >= 0 ? "+" : ""}${s.dxyPctChange1d.toFixed(2)}%`,
+              color: s.dxyPctChange1d >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)",
+            } : undefined}
+          />
+        )}
+        {s.spx != null && (
+          <Cell
+            label="S&P 500"
+            value={s.spx.toFixed(2)}
+            mono
+            badge={s.spxPctChange1d != null ? {
+              text: `${s.spxPctChange1d >= 0 ? "+" : ""}${s.spxPctChange1d.toFixed(2)}%`,
+              color: s.spxPctChange1d >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)",
+            } : undefined}
+          />
+        )}
+        {s.vix != null && (
+          <Cell
+            label="VIX"
+            value={s.vix.toFixed(2)}
+            mono
+            badge={{
+              text: s.vix < 15 ? "calm" : s.vix < 25 ? "normal" : "elevated",
+              color: s.vix < 15 ? "var(--c-green-bright)" : s.vix < 25 ? "var(--c-fg-muted)" : "var(--c-red-bright)",
+            }}
+          />
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ─── Broker actions (TradeLocker live modify / close) ────────────────────
+
+function BrokerActions({
+  tradeId, pair, side, entryPrice, stopPrice, targetPrice, refresh,
+}: {
+  tradeId: string
+  pair: string
+  side: string
+  entryPrice: number
+  stopPrice: number | null
+  targetPrice: number | null
+  refresh: () => void
+}) {
+  const [busy, setBusy] = useState<"modify" | "be" | "close" | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [newStop, setNewStop] = useState(stopPrice != null ? String(stopPrice) : "")
+  const [newTarget, setNewTarget] = useState(targetPrice != null ? String(targetPrice) : "")
+
+  const onMoveSlToBe = async () => {
+    if (!confirm(`Move stop to break-even (entry ${entryPrice})? This sends a live modify to TradeLocker.`)) return
+    setBusy("be"); setErr(null)
+    const r = await brokerModifyPosition({ tradeId, stop_price: entryPrice })
+    setBusy(null)
+    if (!r.ok) setErr(r.error)
+    else refresh()
+  }
+
+  const onSaveModify = async () => {
+    const stop = newStop ? Number(newStop) : null
+    const target = newTarget ? Number(newTarget) : null
+    if (!confirm(`Send modify to TradeLocker? SL=${stop ?? "—"}, TP=${target ?? "—"}`)) return
+    setBusy("modify"); setErr(null)
+    const r = await brokerModifyPosition({
+      tradeId,
+      stop_price: stop,
+      target_price: target,
+    })
+    setBusy(null)
+    if (!r.ok) setErr(r.error)
+    else { setEditing(false); refresh() }
+  }
+
+  const onClose = async () => {
+    if (!confirm("Close this position at market via TradeLocker? This is irreversible.")) return
+    setBusy("close"); setErr(null)
+    const r = await brokerClosePosition(tradeId)
+    setBusy(null)
+    if (!r.ok) setErr(r.error)
+    else refresh()
+  }
+
+  const sideAdjusted = side === "long" ? "+" : "−"
+
+  return (
+    <Section title="Broker actions">
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Quick action: SL to BE */}
+        {stopPrice != null && stopPrice !== entryPrice && (
+          <button
+            type="button"
+            onClick={onMoveSlToBe}
+            disabled={busy != null}
+            className="btn"
+            style={{ justifyContent: "flex-start", padding: "8px 12px" }}
+            title={`Move stop from ${stopPrice} to ${entryPrice} (entry)`}
+          >
+            <Icon name="risk" size={12} />
+            <span>{busy === "be" ? "Sending…" : `Move SL to break-even (${pair} ${entryPrice})`}</span>
+          </button>
+        )}
+
+        {/* Edit SL/TP inline */}
+        {!editing ? (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={busy != null}
+            className="btn"
+            style={{ justifyContent: "flex-start", padding: "8px 12px" }}
+          >
+            <Icon name="edit" size={12} />
+            <span>Modify SL / TP at broker</span>
+          </button>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 8 }}>
+            <input
+              type="number" step="any" placeholder="New SL"
+              value={newStop} onChange={(e) => setNewStop(e.target.value)} style={priceInput}
+            />
+            <input
+              type="number" step="any" placeholder="New TP"
+              value={newTarget} onChange={(e) => setNewTarget(e.target.value)} style={priceInput}
+            />
+            <button type="button" onClick={() => setEditing(false)} className="btn">Cancel</button>
+            <button type="button" onClick={onSaveModify} disabled={busy != null} className="btn btn-primary">
+              {busy === "modify" ? "…" : "Send modify"}
+            </button>
+          </div>
+        )}
+
+        {/* Close at market */}
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy != null}
+          className="btn"
+          style={{
+            justifyContent: "flex-start", padding: "8px 12px",
+            color: "var(--c-amber)",
+            borderColor: "rgba(229, 162, 59, 0.3)",
+          }}
+        >
+          <Icon name="x" size={12} />
+          <span>{busy === "close" ? "Closing…" : `Close ${sideAdjusted} position at market`}</span>
+        </button>
+
+        {err && (
+          <div style={{ fontSize: 12, color: "var(--c-red-bright)" }}>{err}</div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--c-fg-dim)" }}>
+          Each action is sent live to TradeLocker. The next sync (or realtime push) will reflect the broker&apos;s confirmation.
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -569,11 +1013,23 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Cell({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Cell({
+  label, value, mono, badge,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+  badge?: { text: string; color: string; title?: string }
+}) {
   return (
     <div style={{ background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)", borderRadius: 8, padding: 10 }}>
       <div style={{ fontSize: 10, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-      <div className={mono ? "mono" : "tnum"} style={{ fontSize: 12.5, marginTop: 2 }}>{value}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+        <span className={mono ? "mono" : "tnum"} style={{ fontSize: 12.5 }}>{value}</span>
+        {badge && (
+          <span title={badge.title} style={{ fontSize: 10.5, color: badge.color, fontWeight: 600 }}>{badge.text}</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -592,6 +1048,27 @@ function SideChip({ side }: { side: string }) {
       textTransform: "uppercase",
     }}>
       {side}
+    </span>
+  )
+}
+
+function OrderTypeChip({ type }: { type: string | null }) {
+  if (!type) return null
+  const t = type.toLowerCase()
+  const label = t === "market" ? "Market"
+    : t === "limit" ? "Limit"
+    : t === "stop" ? "Stop"
+    : t.charAt(0).toUpperCase() + t.slice(1)
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "1px 8px", borderRadius: 999,
+      fontSize: 10, fontWeight: 600,
+      color: "var(--c-fg-dim)", background: "var(--c-bg-elev-3)",
+      border: "1px solid var(--c-border)",
+      textTransform: "uppercase", letterSpacing: "0.04em",
+    }}>
+      {label}
     </span>
   )
 }

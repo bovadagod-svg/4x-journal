@@ -5,7 +5,9 @@ import { Icon } from "@/components/icons"
 import { getJournalEntries, getUserTrades } from "@/lib/queries/trades"
 import { getUserPlaybooks } from "@/lib/queries/accounts"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
+import { LogIdeaButton } from "@/components/journal/log-idea-button"
 import { JournalView } from "@/components/journal/journal-view"
+import { IdeasComparisonCard } from "@/components/journal/ideas-comparison-card"
 
 export default async function JournalPage() {
   const m = SECTION_META.journal
@@ -18,11 +20,11 @@ export default async function JournalPage() {
   if (entries.length === 0) {
     return (
       <>
-        <SectionHeader title={m.title} subtitle={m.subtitle} actions={<LogTradeButton label="Log trade with notes" />} />
+        <SectionHeader title={m.title} subtitle={m.subtitle} actions={<><LogIdeaButton /><LogTradeButton label="Log trade with notes" /></>} />
         <SectionStub
           icon={m.icon}
           title="No journal entries yet"
-          description="Notes you write in the Log Trade modal land here automatically. Click any trade in the Ledger (or the journal icon in the row actions) to open the 6-tab editor — pre-trade, live notes, post-trade, cold review, screenshots, tags."
+          description="Notes you write in the Log Trade modal land here automatically. Or click Log Idea to capture a setup you're watching but haven't taken yet — Coach AI uses the gap between ideas and executions to flag patterns."
         />
       </>
     )
@@ -43,10 +45,13 @@ export default async function JournalPage() {
             <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
               <Icon name="filter" size={13} /> <span>Filters</span>
             </button>
+            <LogIdeaButton />
             <LogTradeButton label="Log trade" />
           </>
         }
       />
+
+      <IdeasComparisonCard entries={entries} />
 
       <JournalView entries={entries} trades={trades} playbookMap={playbookMap} />
     </>

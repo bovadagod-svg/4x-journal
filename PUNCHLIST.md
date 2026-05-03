@@ -269,7 +269,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ## 🟣 Bigger lifts
 
-### 16. `[~]` MT4 / MT5 webhook bridge
+### 16. `[-]` MT4 / MT5 webhook bridge
 
 **Why:** Forex retail's largest user base. Bridge = a Python or MQL Expert Advisor running on the user's MT terminal that POSTs fills to your existing TradingView webhook endpoint.
 
@@ -280,11 +280,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~1 day for the EA + docs
 
-**Notes:** EA reads OnTrade events, normalizes to your payload, POSTs. Document exactly how to install.
+**Notes:** 2026-05-03 — Deferred. User decision: not integrating other broker platforms yet (same call as #17 cTrader). The TradingView webhook + CSV import already cover MT users who can pipe fills out via either path. Revisit when there's clear demand for a one-click MT install.
 
 ---
 
-### 17. `[ ]` cTrader Open API integration
+### 17. `[-]` cTrader Open API integration
 
 **Why:** Official OAuth API, well-documented, second-most-popular Forex platform.
 
@@ -292,11 +292,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~1 day
 
-**Notes:** Spec at https://help.ctrader.com/open-api/
+**Notes:** 2026-05-03 — Deferred. User decision: not integrating other broker platforms yet. TradeLocker (live) + CSV import (universal fallback) cover the current need. Revisit when user demand for cTrader specifically appears, or when MT4/5 bridge (#16) is also being scoped — at that point doing both broker integrations as a batch makes more sense than picking off cTrader alone.
 
 ---
 
-### 18. `[~]` Coach AI nudges
+### 18. `[x]` Coach AI nudges
 
 **Why:** Phase 10 placeholder. Server action takes last 30 days of trades + journal entries → asks Claude *"What patterns do you see? Where am I leaking edge?"* → renders in the existing `CoachNudge` widget slot on Dashboard.
 
@@ -309,11 +309,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~half day
 
-**Notes:** Cache by day to avoid re-querying on every page load. Rate-limit per user.
+**Notes:** 2026-05-03 — Code complete and live. `lib/actions/coach.ts` exports `generateCoachInsights(force=false)` which (1) returns `{configured: false}` when ANTHROPIC_API_KEY is missing so the widget can fall back gracefully, (2) reads a per-day `user_settings.coach_cache` JSON blob to avoid blasting the API on every page load, (3) fetches last-30-days trades + entries + playbooks, builds a compact dataset (≤200 chars per pre/post-trade text), calls `claude-3-5-haiku-latest` with a strict system prompt requiring 2-3 cited observations as a JSON array, parses the response, caches it. `CoachNudge` widget on the Dashboard handles all four states: loading (just spawned), AI-available (ul with bullets + Refresh button), AI-not-configured (deterministic narrative + setup hint), AI-errored (deterministic narrative + amber error line). Will activate as soon as the user adds ANTHROPIC_API_KEY to Vercel — no other code changes needed. Rate-limiting beyond the daily cache is intentionally not implemented; the cache *is* the rate limit.
 
 ---
 
-### 19. `[~]` Email delivery (Resend) + weekly digest
+### 19. `[x]` Email delivery (Resend) + weekly digest
 
 **Why:** All `notify_*` toggles wait for delivery. Email is the lowest-friction first channel.
 
@@ -326,11 +326,11 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~3 hours
 
-**Notes:** Resend free tier covers personal use easily.
+**Notes:** 2026-05-03 — Code complete and live. `lib/email/weekly-digest.ts` exports `sendWeeklyDigests()` — uses service-role Supabase client to find users with `notify_weekly_report=true` AND `email_digest='weekly'`, joins their auth email via `auth.admin.getUserById`, computes 7-day stats (closed count, wins/losses, WR, total P&L, avg R, top pair), renders dark-mode-styled HTML email, sends via Resend. Cron route `/api/cron/weekly-digest` is bearer-CRON_SECRET-gated, scheduled in vercel.json for Sundays 18:00 UTC. Returns explicit "not configured" errors when `RESEND_API_KEY`, `EMAIL_FROM`, or `SUPABASE_SERVICE_ROLE_KEY` are missing — graceful no-op. Will activate as soon as Vercel has all three env vars + a verified Resend sender. Resend free tier covers personal use easily.
 
 ---
 
-### 20. `[~]` Web push notifications
+### 20. `[x]` Web push notifications
 
 **Why:** Real-time daily DD alerts, news warnings. Works on installed PWA.
 
@@ -341,7 +341,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 **Effort:** ~half day
 
-**Notes:** Needs VAPID keys. Defer until #19 ships and email is proven.
+**Notes:** 2026-05-03 — Code complete and live. Service worker at `public/sw.js` handles push events + click-to-focus. Settings → Notifications has `<PushSection />` with full lifecycle: detects unsupported browsers, detects missing VAPID config, registers SW + requests permission + subscribes via PushManager + persists subscription to `push_subscriptions` table on enable, unsubscribes + deletes on disable. Server actions in `lib/actions/push.ts` — `subscribePush`, `unsubscribePush`, and `pushToUser(userId, payload)` for future alert flows (daily DD warnings, news windows, payouts) to call. `pushToUser` cleans up dead subscriptions (410/404 responses → row delete). Activates when `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` are set; otherwise the section renders a "not configured" message with the `npx web-push generate-vapid-keys` setup instruction.
 
 ---
 
@@ -367,17 +367,43 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ## ⚪ Polish (later)
 
-- `[ ]` **Empty state copy audit** — some are placeholder, not punchy
+- `[x]` **Empty state copy audit** — some are placeholder, not punchy
 - `[x]` **Keyboard shortcuts** — `c` to log trade, `?` for help, `g`+letter for navigation
-- `[ ]` **Global command palette (cmd-K)** — power-user fast nav
+- `[x]` **Global command palette (cmd-K)** — power-user fast nav
 - `[x]` **Error boundaries** — server actions throw, page just dies; wrap each route segment
-- `[ ]` **In-app help docs** — Settings has "Help docs" button in prototype that goes nowhere
-- `[ ]` **Sentry / error tracking in prod**
-- `[ ]` **Avatar upload** — currently gradient-initials only
-- `[ ]` **Account email change flow** — currently impossible without admin
-- `[ ]` **Rate limit auth-less endpoints** (webhook, etc.) via Upstash
-- `[ ]` **RLS policy audit** — every table, every operation
+- `[x]` **In-app help docs** — Settings has "Help docs" button in prototype that goes nowhere
+- `[x]` **Sentry / error tracking in prod**
+- `[x]` **Avatar upload** — currently gradient-initials only
+- `[x]` **Account email change flow** — currently impossible without admin
+- `[x]` **Rate limit auth-less endpoints** (webhook, etc.) via Upstash
+- `[x]` **RLS policy audit** — every table, every operation
 - `[-]` **Backtest** — deferred indefinitely (see conversation 2026-05-02 for the explanation)
+
+### Polish notes — 2026-05-03
+
+**Empty state copy audit:** Stripped "Phase X" dev-jargon from the Calendar empty state and the Backtest stub. Calendar now reads honestly ("widen your watchlist to see more"); Backtest now points users to the Risk-of-Ruin + Monte Carlo cards on Analytics as the closest forward-projection alternative. Ledger empty state rewritten to surface the three actual ways to populate it (log modal / TradeLocker sync / CSV) rather than just "tap Log Trade." Other empty states (Accounts, Watchlist, Playbooks, Journal, Reports roadmap tiles) audited and left as-is — they were already clear.
+
+**Global command palette:** New `src/components/shell/command-palette.tsx`. Listens for ⌘K / Ctrl+K globally — intentionally overrides typing-target detection so it works inside text inputs too. Substring + soft-fuzzy match across label + keywords. Arrow keys + Enter to run, Esc to dismiss. Commands include all 11 nav targets (Dashboard, Ledger, Journal, Analytics, Playbooks, Risk, Calendar, Watchlist, Accounts, Reports, Settings) plus 5 actions (Log trade, Log idea, Open Tax settings, Open Integrations settings, Open Help docs). Mounted in `(dashboard)/layout.tsx` next to `<KeyboardShortcuts />`. Help overlay updated to advertise ⌘K as the first row.
+
+**In-app help docs:** New `/help` route with sticky-side navigation. 12 sections: Quick start, Keyboard shortcuts, TradeLocker connection (with server-name examples), TradingView webhook (with copy-pasteable JSON payload), CSV import, Risk rules, Coach AI, Tax exports (Form 8949), Sharing entries (public profile vs private token), Display currency + FX rates, FAQ (5 entries covering metals P&L, account scope, risk-of-ruin, deletion, bug reporting), and Environment variables (admin reference for self-hosters). Discoverable via the command palette ("Open Help docs"). The "Help docs" button mentioned in the original punchlist note didn't exist in the current codebase yet — it was a prototype reference.
+
+**Sentry / error tracking:** New `lib/observability.ts` with `captureException(err, ctx)` + `captureMessage(msg, ctx)`. **No SDK dependency added** — the function POSTs directly to Sentry's HTTP envelope endpoint when `SENTRY_DSN` is set, parsing the DSN once and caching the result. When unset, console.error in a structured JSON format Vercel's logs panel highlights. Wired into `error-fallback.tsx` so every route's `error.tsx` boundary now reports to Sentry automatically when configured. Trade-off: no transactions / breadcrumbs / source maps without the SDK; that's the cost of skipping the ~200KB dep. Easy to upgrade later if needed.
+
+**Avatar upload:** Migration `user_settings_avatar_url` adds a nullable `avatar_url text` column. Migration `avatars_storage_bucket` creates a public Supabase Storage bucket (`avatars`) with per-user write policies (path `<user_id>/avatar.<ext>` so the foldername check enforces ownership). New `uploadAvatar(formData)` and `removeAvatar()` server actions in `lib/actions/settings.ts` — 2 MB max, JPEG/PNG/WebP/GIF only, upserts the file (same path each upload, no orphans). ProfilePanel renders an `<img>` when `avatar_url` is set, else falls back to the existing gradient-initials. Upload + Replace + Remove buttons. /u/[handle] page now shows the uploaded avatar; `get_public_profile` RPC was dropped + recreated to include `avatar_url` in its return shape (Postgres can't change return types in place). Public-bucket-listing advisor warning resolved by dropping the broad SELECT policy on `storage.objects` — public buckets serve files via direct URL without needing one.
+
+**Account email change flow:** Schema-less. New `changeEmail` server action calls `supabase.auth.updateUser({ email })` which triggers Supabase's confirmation-link flow (link goes to the *new* address; sign-in email doesn't change until clicked). New `EmailChangeForm` subcomponent in ProfilePanel — collapsed-by-default to a "Change" link, expands to inline form when clicked, shows a green "Confirmation email sent" success state.
+
+**Rate limit auth-less endpoints:** Skipped Upstash since we already have Supabase. New `rate_limits` table + `consume_rate_limit(p_key, p_window_seconds)` SECURITY DEFINER RPC that atomically increments a counter, resetting the window when older than the configured TTL. New `lib/rate-limit.ts` with `checkRateLimit(key, {limit, windowSeconds})` — returns `{ok, remaining, count, skipped?}`. Fail-open on misconfiguration (no SUPABASE_SERVICE_ROLE_KEY) and on RPC error so transient DB issues don't block legitimate traffic. Wired into the TradingView webhook at 60 requests/minute per userId — generous for any real alert flow, squashes runaway TradingView loops + brute-force attempts on the secret. Returns 429 with `Retry-After: 60` when exceeded. Direct table access on `rate_limits` revoked from anon/authenticated; only the SECURITY DEFINER RPC can read/write.
+
+**RLS policy audit:** Used Supabase MCP advisors to enumerate all RLS issues. **Findings + fixes:**
+  - `rate_limits` had RLS disabled — enabled, plus revoked direct grants from anon/authenticated. The SECURITY DEFINER RPC bypasses RLS as intended; no other path reads/writes the table.
+  - All 11 user-owned tables (`accounts`, `trades`, `journal_entries`, etc.) verified to have RLS enabled with the right CRUD shape and `auth.uid() = user_id` enforced on both `USING` clauses (SELECT/UPDATE/DELETE) and `WITH CHECK` clauses (INSERT). No table allows a user to insert rows attributed to a different user.
+  - `economic_events` confirmed read-only-public — that's intentional (calendar is shared data).
+  - **Locked down internal SECURITY DEFINER functions** that were callable by anon/authenticated via PostgREST's `/rest/v1/rpc/`: `consume_rate_limit`, `recompute_trade_aggregates`, `handle_new_user_account`, `handle_new_user_settings`. EXECUTE revoked from anon + authenticated; they continue to work from triggers and service-role calls.
+  - **Pinned `search_path = public`** on the legacy trigger functions (`touch_user_settings`, `touch_updated_at`, `touch_journal_last_edited`, `trade_fills_recompute_trigger`) so a malicious schema in front of public can't redefine called identifiers.
+  - **Avatars bucket public-listing warning** resolved by dropping the broad SELECT policy on `storage.objects`. Public buckets serve files via direct URL without needing it.
+  - **3 SECURITY DEFINER functions intentionally remain anon-callable**: `get_entry_by_share_token`, `get_public_entries`, `get_public_profile`. These are how unauthenticated users view shared profiles + entries; the token / handle is the access control. Tokens are 32-byte URL-safe random; brute-force is infeasible. These warnings stay in the advisor as "known + intentional."
+  - **One Supabase Auth setting** the linter flagged needs the dashboard, not SQL: enable "Leaked password protection" (HaveIBeenPwned check) under Auth → Password Security. Recommend doing this when the user logs in to the Supabase dashboard next.
 
 ---
 
@@ -385,7 +411,7 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more per-trade and per-account than we currently store. ~Half a day total to land all four; afterwards every analytics module gets richer data for free.
 
-### 22. `[ ]` Capture per-trade broker fields on `trade_fills`
+### 22. `[x]` Capture per-trade broker fields on `trade_fills`
 
 **Why:** TL returns `commission`, `swap`, `tax`, `requestPrice` (vs `avgPrice` for slippage), `orderType`, `executionType`, `magicNumber`, `comment` on every order — we drop them all. Adding them unlocks slippage analytics, true net P&L, market-vs-limit edge, and algo-vs-manual splits.
 
@@ -399,11 +425,11 @@ These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more
 
 **Effort:** ~2 hours
 
-**Notes:**
+**Notes:** 2026-05-03 — Migration `trade_fills_broker_fields` adds 8 nullable columns: `commission`, `swap`, `tax`, `request_price`, `order_type`, `execution_type`, `magic_number`, `broker_comment`. New `TLOrderMeta` type + `extractOrderMeta()` helper in `client.ts` normalize TL field-name variants (`commission`/`commissions`, `orderType`/`type`, `swap`/`rollover`, etc). `TLPosition` now carries `entryMeta` + `exitMeta` since per-fill metadata differs from per-trade. Both `objectToPosition` (open positions) and `reconstructClosedTrades` populate the metadata. Importer at `lib/actions/tradelocker.ts` extends `FillInsert` with all 8 columns, writing entry-fill data from `entryMeta` and exit-fill data from `exitMeta`. Existing `external_provider,external_id` upsert key unchanged → re-syncs idempotent. `database.types.ts` regenerated via Supabase MCP.
 
 ---
 
-### 23. `[ ]` Capture margin / free-margin / margin-level on `accounts`
+### 23. `[x]` Capture margin / free-margin / margin-level on `accounts`
 
 **Why:** TL's `/state` endpoint returns `equity`, `marginUsed`, `freeMargin`, `marginLevel`, floating P&L, cumulative swap. We extract balance + projectedBalance + availableFunds and ignore the rest. Margin level dropping below 100% is the literal definition of margin call — surfacing it is the difference between "I got margin-called" and "I avoided it."
 
@@ -417,11 +443,11 @@ These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more
 
 **Effort:** ~1 hour
 
-**Notes:** Equity vs balance: balance is closed P&L only; equity = balance + floating. Most prop firms track both.
+**Notes:** 2026-05-03 — Migration `accounts_margin_fields` adds 5 nullable numerics: `margin_used`, `free_margin`, `margin_level` (percent), `floating_pnl`, `swap_total`. `TLAccountState` type extended; `decodeAccountState` reads all 5 with fallback variants (`marginUsed`/`usedMargin`/`margin`, `unrealizedPl`/`floatingPl`/`floatingProfitLoss`, etc) — the existing `accountColumns` zip from `/trade/config` keeps it forward-compatible. Importer's account-state patch extended with all 5 columns. Existing `equity` column kept (= TL `projectedBalance` = balance + floating). Also added `lib/status.ts` shared helper: `marginStatusColor()` returning `"green"|"amber"|"red"|"black"|"muted"` with thresholds `>=300 green`, `150–300 amber`, `100–150 red`, `<100 black`, plus `MARGIN_COLOR_VAR` and `MARGIN_BG_VAR` maps to CSS vars — single source of truth used by AccountCard, AccountDrawer, RiskAccountCard, MarginCallCard, MarginProjection.
 
 ---
 
-### 24. `[ ]` Surface broker fields on Trade Detail Drawer
+### 24. `[x]` Surface broker fields on Trade Detail Drawer
 
 **Why:** Once #22 is in, render the new fields in the Order tab — commission line, swap line, slippage in pips (computed: `requestPrice − avgPrice` in pip units), order type chip (Market / Limit / Stop) on the header. Net P&L = gross P&L − commission − swap.
 
@@ -432,11 +458,11 @@ These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more
 
 **Effort:** ~1 hour
 
-**Notes:** Use `slPips`/`pipsBetween` from `lib/pip.ts` for the slippage calculation.
+**Notes:** 2026-05-03 — `OrderTypeChip` (Market/Limit/Stop) added to drawer header next to `StatusChip`, sourced from the primary entry fill's `order_type`. Slippage badge inline next to "Avg entry" cell — uses `pipsBetween(request_price, price, pair)` with sign flipped per side (long: filled above request = negative/red, short: filled below request = negative/red). Cell component extended with optional `badge` prop (text + color + tooltip). New "Costs" sub-section between Fill summary and Tags renders Commission, Swap, Tax cells (sums entry+exit fill values) and a Net P&L line (gross − commission − swap − tax). All badges/sections hide cleanly when broker doesn't expose the field, so manual entries are unaffected.
 
 ---
 
-### 25. `[ ]` Surface margin metrics on Account Card / Drawer / Risk page
+### 25. `[x]` Surface margin metrics on Account Card / Drawer / Risk page
 
 **Why:** Once #23 lands, these numbers are live in the DB. Add to the Account Card a small bar showing `margin_used` consumption; in the drawer Overview tab add 4 cells (Equity, Free Margin, Margin Used, Margin Level). On the Risk page, replace or augment the existing usage gauges with margin-level data.
 
@@ -449,7 +475,7 @@ These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more
 
 **Effort:** ~1.5 hours
 
-**Notes:**
+**Notes:** 2026-05-03 — **AccountCard**: new `MarginBar` component renders below the stats grid when `margin_level != null` — 6px-tall bar with width = min(100%, margin_used/equity), color via `marginStatusColor`, headline shows level% + "X used". Hidden entirely for non-TL accounts. **AccountDrawer Overview tab**: when `margin_level != null`, prepends a 4-cell row (Equity · Free margin · Margin used · Margin level) above the existing 2×3 grid; the level cell is colored. `Cell` component extended with optional `color` prop. **RiskAccountCard**: 5th `<GaugeCell>` for "Margin level" appended after "Per-trade cap". Local `marginLevelToFillPct(level)` maps the broker percent to a 0–100 fill where 100% = full red bar (margin call) and 600%+ = empty bar. `color` prop on GaugeCell pulled from `MARGIN_COLOR_VAR`. Gauge auto-fits into the existing `repeat(auto-fit, minmax(140px, 1fr))` grid, so it wraps gracefully on mobile.
 
 ---
 
@@ -457,7 +483,7 @@ These all stem from the same audit on 2026-05-03: TradeLocker returns a lot more
 
 Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator vs Edgewonk / TraderSync / TradeZella.
 
-### 26. `[ ]` Risk-of-Ruin Calculator
+### 26. `[x]` Risk-of-Ruin Calculator
 
 **Why:** Most retail traders don't realize that 58% WR with +0.3R avg still has a 14% probability of 50% drawdown over 100 trades. This is the killer Coach feature.
 
@@ -470,11 +496,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~3 hours
 
-**Notes:**
+**Notes:** 2026-05-03 — `lib/ruin.ts` exports `probabilityOfRuin({winRate, avgWinR, avgLossR, riskPerTradePct, n, thresholds, paths, seed})` returning `{thresholds: [{threshold, probability}], medianEnding, paths}` and `ruinInputsFromStats(stats, riskPct, n)` to derive inputs from `agg()` output. Compounding model: each trade multiplies balance by `(1 + avgWinR×riskPct)` on win or `(1 − avgLossR×riskPct)` on loss; tracks peak-to-trough drawdown. Mulberry32 PRNG so seeded runs are deterministic. Default 5000 paths, snappy enough that slider changes feel instant. Tests in `ruin.test.ts` (9 cases) cover degenerate inputs (riskPct=0, WR=0/1), monotonicity (risk↑ → DD prob↑), determinism, and `ruinInputsFromStats` derivation. `RiskOfRuinCard` renders an empty state at <30 closed trades or all-wins/all-losses; otherwise shows readonly stats (WR / avgWin / avgLoss / expectancy) + sliders for risk % (0.1–5%) and horizon (50–500 trades) + 4 cells: P(25% DD), P(50% DD), P(75% DD), and median ending equity %. Color thresholds on each cell — `red ≥ 25%`, `amber ≥ 10%`, `green < 10%`. Reuses the same `agg()` stats object already computed in AnalyticsView. Slotted directly under the Risk-Sizing + Drawdown row.
 
 ---
 
-### 27. `[ ]` Monte Carlo Equity Simulator
+### 27. `[x]` Monte Carlo Equity Simulator
 
 **Why:** Forward simulation. Take user's current stats, run 1000 random paths, plot median + 5th/95th bands + horizon distribution.
 
@@ -486,13 +512,13 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~3 hours
 
-**Notes:** Pair with #26 on the same Analytics row.
+**Notes:** 2026-05-03 — Companion to #26. `lib/monte-carlo.ts` exports `simulate({winRate, avgWinR, avgLossR, riskPerTradePct, startBalance, n, paths, seed})` returning `{paths, percentiles: {p05/p25/p50/p75/p95}, endingStats}`. Same physics as #26 but emits the full path matrix; the consumer gets per-timestep percentile envelopes (computed by sorting each column) plus final-balance percentiles. Default 1000 paths. Mulberry32 PRNG, deterministic when seeded. Tests in `monte-carlo.test.ts` (6 cases) cover dimension correctness, percentile ordering, riskPct=0 edge case, 100% WR strictly-increasing paths, positive expectancy → median > start, and seeded determinism. `MonteCarloCard` renders a full-width SVG fan chart: 5–95 percentile band as outer fill, 25–75 as inner fill, median as a 1.8px stroke. Tone (green/red) auto-driven by whether median ends above/below start. Sliders identical to RiskOfRuinCard for consistency. Below the chart: 5 endpoint cells (5th / 25th / Median / 75th / 95th) with USD values + % delta. Starting balance plumbed from `analytics/page.tsx` as the sum of all account `equity` (fallback $10k for empty-account demo). Slotted directly below RiskOfRuinCard so the two pair visually on the Analytics page.
 
 ---
 
 ## 🔵 Sprint C — Live data + classification (depends on Sprint A)
 
-### 28. `[ ]` Margin Call Risk Card
+### 28. `[x]` Margin Call Risk Card
 
 **Why:** Once #23 captures `margin_level`, surface as a color-coded gauge with forward projection: "If your open trades all hit stop, your margin level would drop to X%."
 
@@ -504,11 +530,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~2 hours
 
-**Notes:**
+**Notes:** 2026-05-03 — **MarginCallCard** (Dashboard): server component fetching `getUserAccounts()`, filters to accounts with non-null `margin_level`, sorts by status severity (black > red > amber > green). Each row shows colored dot + label/broker + percent + status word ("safe"/"watch"/"danger"/"margin call"). Subtitle dynamically reads "1 account near margin call" / "1 account on watch" / "All accounts safe". Empty state ("Sync a TradeLocker account…") when no synced TL accounts. Slotted in `dashboard/page.tsx` between `<RiskGauge />` and `<SessionClock />` in the right column of `grid-2-1`. **MarginProjection** (Risk page): independent server component that queries open trades for an account and computes two scenarios — "If all stops hit" (sum of pnl-at-stop for each open trade) and "If all targets hit" (sum of pnl-at-target). Each renders a colored pill with the projected margin level + dollar P&L delta. Hidden when account has no `margin_level` or no open trades. Rendered in `risk/page.tsx` directly after each `<RiskAccountCard />`. Color thresholds match `marginStatusColor()`.
 
 ---
 
-### 29. `[ ]` Order-Type Edge Analysis
+### 29. `[x]` Order-Type Edge Analysis
 
 **Why:** Once #22 captures `order_type`, add Analytics breakdown comparing market vs limit vs stop entries. Often the user's best trades are limit fills (patience) and worst are market fills (FOMO).
 
@@ -519,13 +545,13 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~1 hour
 
-**Notes:**
+**Notes:** 2026-05-03 — Added `byOrderType(trades, fillsByTrade)` aggregator inside `analytics-view.tsx` that reads each trade's primary entry fill `order_type` and buckets into Market/Limit/Stop/Other (in display order, not P&L order — narrative depends on consistent reading). Reuses existing `aggGroup()` helper and `BreakdownBars` component verbatim — same gradient bar visual as the 4 existing breakdowns, no new card style invented. New `OrderTypeBreakdown` wrapper renders: a Connect-TradeLocker empty state when fewer than 5 trades have `order_type` populated, otherwise `BreakdownBars` with the auto-narrative as subtitle. Narrative ("Your limit fills win 67% — your market fills win 48%. Be patient.") fires when delta between best-WR and worst-WR bucket ≥ 10pp; the "Be patient." nudge only appends when the spread is specifically Limit > Market. Slotted between the existing Side+Account row and the Day-Hour heatmap in `AnalyticsView`.
 
 ---
 
 ## 🔵 Sprint D — Live quotes
 
-### 30. `[ ]` Live quote ticker for Watchlist + Open Positions
+### 30. `[x]` Live quote ticker for Watchlist + Open Positions
 
 **Why:** TL's `/trade/quotes/{instrumentId}` returns live bid/ask. Watchlist rows get real prices. Open positions show real floating P&L instead of stale entry-time snapshots.
 
@@ -538,13 +564,13 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~half day
 
-**Notes:** Needs valid TL access token in cookie/server context. Refresh-token plumbing (currently we re-login each sync) becomes important.
+**Notes:** 2026-05-03 — Shipped a 30s-poll variant rather than 10s. Fresh-login-per-poll at 10s is 6 logins/min/user — too expensive for a feature that's mostly visual confirmation; 30s = 2 logins/min and the difference is imperceptible to users. Refresh-token plumbing wasn't strictly required at 30s either, so deferred. Implementation: new `tlGetQuote(env, accessToken, accNum, instrumentId, routeId?)` in `client.ts` calls TL's `/trade/quotes/{instrumentId}` endpoint and returns `{bid, ask, ts}` (null on miss). New `getLiveQuotesForOpen()` server action fetches the user's open TL positions, groups by account (one TL session per account, not per position), then queries quotes for each. Computes mid-price floating P&L per position (`(mid - entry) × size × side`). Skipped watchlist enrichment — it would need a separate symbol→instrumentId mapping that doesn't exist yet. Client widget `LivePnlStrip` polls every 30s, pauses when the tab is hidden (saves API quota), pulses a green dot on each refresh, shows total floating P&L in the header + per-position cells. Hides entirely when no TL positions or no instrument map cached. Slotted directly above the existing `OpenPositions` table on the Dashboard.
 
 ---
 
 ## 🔵 Sprint E — Tax
 
-### 31. `[ ]` FIFO tax matcher (Schedule D / Form 8949)
+### 31. `[x]` FIFO tax matcher (Schedule D / Form 8949)
 
 **Why:** End-of-year value. We have the data; just need the algorithm. FIFO lot matching across closed trades, short-term/long-term split (forex is mostly short-term), wash-sale flagging within 30 days. Export as IRS Form 8949 CSV.
 
@@ -557,13 +583,15 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~half day
 
-**Notes:** Forex Section 988 = ordinary income, not capital gains — so the user's `tax_fx_election` setting determines whether to generate this. For §1256 traders, generate Form 6781 instead (60/40 split).
+**Notes:** 2026-05-03 — Forex Section 988 = ordinary income, not capital gains — so the user's `tax_fx_election` setting determines whether to generate this. For §1256 traders, generate Form 6781 instead (60/40 split).
+
+**Implementation:** `lib/tax/fifo-matcher.ts` exports `matchLots(trades, {applyWashSale})` returning `{rows, totals}`. Since the system stores round-trip trades (one row per opened+closed), each closed trade becomes one Form 8949 line — the "matching" work is holding-period split (<1 year = short-term Box C, ≥1 year = long-term Box F), wash-sale flagging (losing trades where any same-pair, same-side trade opens within ±30 days of close → code "W", adjustment column carries the disallowed loss, gain/loss zeroed), and net-of-costs accounting (subtracts |commission| + |swap| from gross P&L). Description column formats as `"EUR/USD long 100000 units @ 1.08000"`. Dates formatted MM/DD/YYYY per IRS spec. Rows sorted chronologically by date sold. `form8949CsvHeaders()` + `form8949CsvRow()` helpers emit exactly the columns the IRS line spec expects (we render 11 — Box, description, dates, proceeds, basis, code, adjustment, gain/loss, plus internal holding period + trade ID for reconciliation; the IRS form itself uses 8 of those plus signature/totals you can fill in by hand or in tax software). Tests in `fifo-matcher.test.ts` (11 cases) cover skipping unclosed trades, holding-period classification, fee subtraction, wash-sale matching (positive case + 4 negatives: same trade itself, different side, outside 30d window, election disabled), chronological sort, totals reconciliation, and IRS date formatting. **API route** `/api/reports/form-8949` accepts `?year=YYYY&account=<id|all>`, fetches all closed trades in `[year-31d, year+31d]` (the 30-day buffer is so wash-sale matching can see neighbors that fall outside the export window), joins broker-cost fills (`commission` + `swap` per trade), runs the matcher with `applyWashSale: election !== "988"`, narrows rows to the actual export year, then emits CSV with a totals block (short-term proceeds/basis/gain, long-term proceeds/basis/gain, wash-sale adjustment) + an "Election: §xxx" footer line. Replaced the existing "Tax Statement (PDF)" RoadmapTile on the Reports page with a real `ReportTile` (Year + Account selectors + "Year-end" badge); subtitle changes copy based on the user's §988 vs §1256 election so it's honest about whether wash-sale flagging is on.
 
 ---
 
 ## 🔵 Sprint F — Trade replay (needs market-data feed)
 
-### 32. `[ ]` Trade Instant Replay
+### 32. `[x]` Trade Instant Replay
 
 **Why:** Click any past trade → see the H1/M15 chart for that pair on that day with your entry, stop, target, and exit marked.
 
@@ -576,13 +604,13 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~1 day
 
-**Notes:** Blocked on `POLYGON_API_KEY`. Free tier covers FX majors; metals + indices need paid.
+**Notes:** 2026-05-03 — Shipped without `lightweight-charts` dep — pure SVG candles instead. Saves ~80kb gzipped and avoids a new dependency. Implementation: new `lib/integrations/polygon.ts` Polygon REST client (no SDK), exports `getAggregates({ticker, multiplier, timespan, from, to})` for the `/v2/aggs` endpoint and `pairToPolygonTicker(pair)` for symbol mapping (`EUR/USD` → `C:EURUSD`, `XAU/USD` → `C:XAUUSD`, `BTC/USD` → `X:BTCUSD`, `SPX` → `I:SPX`). Returns `{ok: false, configured: false}` when `POLYGON_API_KEY` is unset. New `lib/actions/trade-replay.ts` exports `getReplayCandles({tradeId, timeframe})` which loads the trade, maps the pair, picks a time-window padded by 25% of the trade's lifetime (clamped 4h–30d depending on timeframe), and fetches candles. Trade Detail Drawer gains a fourth "Replay" tab between Fills + Actions. Inline `CandleChart` component renders the SVG: green/red candles with wick, dashed horizontal reference lines for stop (red) / target (green) / entry (purple), vertical entry/exit markers with colored dots at the actual price. Timeframe pills (M5/M15/H1/H4/D1) re-fetch on click. Empty/error states handled — Polygon plan limitations on indices/metals surface a clear "this symbol isn't on your plan" message.
 
 ---
 
 ## 🔵 Sprint G — Correlation alerts
 
-### 33. `[ ]` Correlation Risk Alerts
+### 33. `[x]` Correlation Risk Alerts
 
 **Why:** Open positions on EUR/USD long, GBP/USD long, AUD/USD long, XAU/USD long? You don't have 4 positions — you have 1 leveraged short-USD bet.
 
@@ -594,13 +622,13 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~2 hours (with hardcoded matrix; full price-based correlation is half day more)
 
-**Notes:**
+**Notes:** 2026-05-03 — Shipped a simpler model than the original "hardcoded correlation matrix" — direct currency-exposure decomposition, which produces the same user-facing warning ("net USD exposure 240%") without requiring a correlation table. `lib/correlation.ts` exports `splitPair()` (parses "EUR/USD" → ["EUR","USD"], returns null for indices like US100), `decomposePositions()` (for each open trade splits into base + quote contributions of ±risk_amount, then sums per currency, sorted by |net|), `findCorrelationWarnings()` (returns currencies whose |net| ≥ 2× avg per-trade risk and ≥ 3 contributing trades — both thresholds configurable), and `formatExposurePct()`. The Position type is just `{id, pair, side, risk}` — the helper is decoupled from the trades schema. Tests in `correlation.test.ts` (13 cases) cover pair splitting (FX/metals/crypto/indices), decomposition basics, the canonical 4× short-USD example, balanced books, threshold tuning, and offsetting positions cancelling. Dashboard `CorrelationWarning` server component fetches `getOpenTrades()`, runs the helper, and renders **only the most-concentrated currency** as a colored banner (green for net long, red for net short) showing currency badge + "Net short USD exposure 400%" headline + plain-English narrative explaining the concentration. Returns null silently when no warnings — invisible on a balanced book. Slotted directly under PnLStrip on the Dashboard. Could be enhanced later with a real cross-asset correlation matrix (USD/JPY ↔ DXY, XAU/USD ↔ DXY-inverse) for currencies-of-currencies effects, but the simple decomposition handles 90% of the "I have 4 trades but really 1 bet" case.
 
 ---
 
 ## 🔵 Long-tail / power features
 
-### 34. `[ ]` Public per-entry sharing with token
+### 34. `[x]` Public per-entry sharing with token
 
 **Why:** We already added the `is_public` flag and `/u/[handle]` route. Per-entry token URLs let the user share a single trade with a coach without exposing their handle.
 
@@ -612,11 +640,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~3 hours
 
-**Notes:**
+**Notes:** 2026-05-03 — **Important security fix mid-build**: my first migration attempt added a `using (share_token is not null)` RLS policy on `journal_entries`. That's wrong — it would have let any anon caller `select * from journal_entries where share_token is not null` and read every shared entry without knowing the tokens. Caught it before shipping; replaced with a `SECURITY DEFINER` RPC `get_entry_by_share_token(p_token text)` that returns exactly one matching entry, mirroring the existing `get_public_profile` / `get_public_entries` pattern. The token is now the secret — no broader visibility leak. Migration `journal_entries_share_token` adds nullable `share_token text` + a partial unique index `where share_token is not null`. Server actions `generateShareToken(entryId)` (idempotent — returns existing token if one exists, generates 32 bytes via `crypto.getRandomValues` → URL-safe base64 otherwise) and `revokeShareToken(entryId)` in `lib/actions/journal-entries.ts`. Public route `app/share/[token]/page.tsx` mirrors the `/u/[handle]` page styling — calls the RPC, 404s when no match, renders the entry with pre/post/cold/lessons sections, optional "see more from @handle" link if the owner has set a handle. New `ShareLinkField` component in the entry editor's Tags tab next to "Share publicly" — three states: (1) "Save the entry once before generating" when entry has no id, (2) generate button when no token, (3) readonly URL input + Copy + Revoke buttons when token exists. Copy uses `navigator.clipboard` with a 2s "Copied" indicator. Revoke confirms first since holders lose access immediately. Types regenerated; entry editor's load loop now also reads `e.share_token`.
 
 ---
 
-### 35. `[ ]` Coach AI v2 — prescriptive
+### 35. `[x]` Coach AI v2 — prescriptive
 
 **Why:** Current Coach AI describes patterns. Next step is prescriptive: "Stop shorts on EUR/USD — your edge is statistically negative." Same `generateCoachInsights` action; new system prompt + structured output schema.
 
@@ -626,11 +654,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~2 hours
 
-**Notes:** Needs ANTHROPIC_API_KEY same as #18.
+**Notes:** 2026-05-03 — System prompt rewritten to require a JSON object with `observations[]` (descriptive) + `suggestions[]` (prescriptive: imperative action + cited basis + severity). Tolerant parser: if Claude regresses to the old array-of-strings shape, upgrade transparently to the new shape with empty suggestions. New `CoachInsightsPayload` type replaces the bare `insights: string[]`; the cache blob now stores both the new payload and the old `insights` array side-by-side so a returning user with an old daily-cached blob still renders without forcing a regen. Widget extended to render a "Suggested actions" section below observations — each suggestion as a colored pill (warn = amber border + amber severity tag, info = purple) with the action sentence and the basis underneath. Activates with the same `ANTHROPIC_API_KEY` env var as #18.
 
 ---
 
-### 36. `[ ]` Position close + SL/TP modify from the journal
+### 36. `[x]` Position close + SL/TP modify from the journal
 
 **Why:** Two-way TL integration. Click a position → "Move SL to break-even" → API call → confirmation toast.
 
@@ -643,11 +671,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~half day
 
-**Notes:** Destructive — wrap in confirm dialog. Track every modification as a journal note for audit.
+**Notes:** 2026-05-03 — Implementation: new `tlModifyPosition({env, accessToken, accNum, positionId, stopLoss, takeProfit})` and `tlClosePosition({...})` in `client.ts` — PATCH and DELETE on `/trade/positions/{positionId}` respectively. Server actions `brokerModifyPosition({tradeId, stop_price?, target_price?})` and `brokerClosePosition(tradeId)` in `actions/tradelocker.ts` look up the trade, verify ownership + that it's TL-synced + open, fresh-login to TL, send the modify/close, mirror the change locally so the UI updates immediately, and append a timestamped audit line to the trade's `notes` (e.g. `[2026-05-03T14:22:01Z] Broker modify: SL → 1.0815`). Trade Detail Drawer's Actions tab now has a "Broker actions" section (only shown for `status=open && external_provider=tradelocker`) with three controls: a one-click "Move SL to break-even (entry X.XXXXX)" shortcut, an inline edit-SL/TP form with two number inputs + Send modify, and a "Close position at market" button. Every action is wrapped in a `confirm()` dialog. After close, the action best-effort-runs an immediate `syncTradeLockerConnection` so the actual fill price + closed_at land in the journal without waiting for the daily cron.
 
 ---
 
-### 37. `[ ]` Trade ideas mode
+### 37. `[x]` Trade ideas mode
 
 **Why:** "I would have taken this" log without real money. After a few weeks, compare hypothetical ideas to actual trades — are you executing your best plans?
 
@@ -659,11 +687,15 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~half day
 
-**Notes:**
+**Notes:** 2026-05-03 — Shipped a v1 of the comparison **without** the "would have averaged +0.8R" math, because the schema doesn't store hypothetical entry/stop/target on idea entries — adding those columns + the editor inputs to populate them is a separate feature. v1 surfaces counts + execution rate; the "would have" math waits for the schema extension.
+
+**Implementation:** Schema reuses existing `journal_entries.kind = "idea"` with no migrations. New `createEmptyIdeaEntry()` server action in `journal-entries.ts` inserts a blank kind="idea" row and returns its id; the entry-editor-drawer's existing "Watching setup — no trade yet / Promote to a live trade when you take it" empty state handles the rest of the UX. New `LogIdeaButton` (amber-themed lightning icon, distinct from the purple Log Trade button) wired to the journal drawer context. Slotted on the Journal page header alongside `LogTradeButton` (also added to the empty-state header). New `IdeasComparisonCard` (client component, useMemo over the entry list) computes 30-day stats: total ideas, executed (have `trade_id`), watching (no trade_id, ≤14 days old), skipped (no trade_id, >14 days old). Execution rate = `executed / (executed + skipped)` — still-watching ideas don't drag the rate down because they haven't been judged yet. Headline cell shows the rate with color thresholds (≥50% green, ≥25% amber, otherwise muted). Auto-narrative below the cells fires once ≥5 ideas have been judged: ≥70% rate → "keep it up", 40–70% → "worth reviewing whether those skips were good decisions or lost edge", <40% → "either your idea bar is too low, or hesitation is leaving setups on the table". Card hides entirely when zero ideas exist. Slotted at the top of `JournalView` so it's the first thing the user sees on the journal page once they have ideas. Also flagged ideas as a Coach AI signal in the empty-state copy on first journal page visit.
+
+**Future enhancement:** Add `idea_pair`, `idea_side`, `idea_entry`, `idea_stop`, `idea_target` columns to journal_entries (or a sibling `journal_idea_setups` table). With those, compute hypothetical R for skipped ideas using a market-data lookup at the would-have-been entry, and surface "the 5 you skipped would have averaged +0.8R". Blocked until a Polygon-style price feed lands (#32).
 
 ---
 
-### 38. `[ ]` WebSocket streaming via TradeLocker
+### 38. `[-]` WebSocket streaming via TradeLocker
 
 **Why:** TL has WebSocket fills/quotes. We poll. Live push removes ~30s sync lag and per-poll API spend.
 
@@ -675,11 +707,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~1 day (architecture decisions on the listener side dominate)
 
-**Notes:** Defer until daily polling proves insufficient.
+**Notes:** 2026-05-03 — Deferred. Vercel Functions can't keep WS connections alive past their timeout, so this requires a separate Node listener service hosted on Fly.io / Railway / similar — an architectural step-up rather than a feature. The 30s live-quote poll (#30) + the daily cron sync (#11) + manual sync button cover 99% of the latency need; users notice missing fills, not 30s lag. Revisit if/when a hosted listener becomes the right move (e.g. when daily-DD push notifications need millisecond reaction time).
 
 ---
 
-### 39. `[ ]` Coach AI auto-tagging
+### 39. `[x]` Coach AI auto-tagging
 
 **Why:** When a journal entry is saved, run a secondary AI pass that suggests tags / mistakes / mood from the prose. User accepts/rejects with one click.
 
@@ -689,11 +721,11 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~2 hours
 
-**Notes:** Cheap call (claude-haiku, <500 tokens out). Gate on user setting toggle to avoid surprise API spend.
+**Notes:** 2026-05-03 — Migration `user_settings_coach_auto_tag` adds nullable boolean column (default false — opt-in) so users don't get surprise API charges. New `lib/actions/coach-tag.ts` exports `suggestEntryTags(entryId)`: gates on `coach_auto_tag = true` AND `ANTHROPIC_API_KEY` set, loads the entry's pre/post/cold/lessons text (max 4000 chars), calls `claude-3-5-haiku-latest` with a strict system prompt that returns `{tags: string[5], mistakes: string[3], mood: enum|null}`, parses tolerantly. Returns the suggestion — does NOT auto-apply. Entry editor's Tags tab now shows a "Coach: suggest tags from prose" button at the top; on click, the result expands into a panel with mood/tag/mistake chips that the user clicks individually to merge into their fields, or hits "Accept all" to merge everything at once. New "Coach AI auto-tagging" section added to Settings → Behavior with a single toggle that wires through `updateBehavior`. Cost: ~1¢ per click at haiku pricing.
 
 ---
 
-### 40. `[ ]` Trade instant context (DXY, VIX, S&P at trade time)
+### 40. `[x]` Trade instant context (DXY, VIX, S&P at trade time)
 
 **Why:** When you click a past trade, see what the macro environment was doing at the moment of entry. "EUR/USD long taken on 2026-04-12 14:30 UTC · DXY was 104.23 (down 0.4%) · S&P up 0.7% · VIX 13.2 (calm)."
 
@@ -703,7 +735,7 @@ Pure-math features (no schema, no API). Risk-of-ruin is the real differentiator 
 
 **Effort:** ~3 hours (after #32's Polygon plumbing exists)
 
-**Notes:**
+**Notes:** 2026-05-03 — Built alongside #32. New `getMacroSnapshot(timestampMs)` in `polygon.ts` queries Polygon for 2-day daily bars on `I:DXY`, `I:SPX`, `I:VIX` around the requested timestamp, returns `{dxy, spx, vix, dxyPctChange1d, spxPctChange1d}`. Tolerant: any series the user's Polygon plan doesn't carry returns null and the UI just hides that cell. New `getTradeContext(tradeId)` server action in `lib/actions/trade-replay.ts` resolves the trade's `opened_at` and calls the snapshot. Trade Detail Drawer's Order tab gets a new "Context at entry" Section between Fill summary and Tags — three Cells (DXY / S&P / VIX) with the value, % change badge for DXY/SPX (green/red), and a "calm/normal/elevated" qualitative badge for VIX. Hides entirely when `POLYGON_API_KEY` isn't set or none of the three series resolved.
 
 ---
 

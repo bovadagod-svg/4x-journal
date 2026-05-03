@@ -9,8 +9,11 @@ import { CoachNudge } from "@/components/dashboard/coach-nudge"
 import { ScopeBanner } from "@/components/dashboard/scope-banner"
 import { PnLStrip } from "@/components/dashboard/pnl-strip"
 import { OpenPositions } from "@/components/dashboard/open-positions"
+import { LivePnlStrip } from "@/components/dashboard/live-pnl-strip"
 import { JournalFeed } from "@/components/dashboard/journal-feed"
 import { RiskGauge } from "@/components/dashboard/risk-gauge"
+import { MarginCallCard } from "@/components/dashboard/margin-call-card"
+import { CorrelationWarning } from "@/components/dashboard/correlation-warning"
 import { WatchlistWidget } from "@/components/dashboard/watchlist-widget"
 import { RecentTrades } from "@/components/dashboard/recent-trades"
 import { EquityCurveCard } from "@/components/dashboard/equity-curve-card"
@@ -53,6 +56,8 @@ export default async function DashboardPage() {
 
       <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />
 
+      <CorrelationWarning />
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
         <PipStatsCard trades={recentTrades} />
         <StreakCard trades={recentTrades} periodLabel="recent" />
@@ -62,9 +67,12 @@ export default async function DashboardPage() {
         <EquityCurveCard points={equity} />
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
           <RiskGauge />
+          <MarginCallCard />
           <SessionClock />
         </div>
       </div>
+
+      <LivePnlStrip />
 
       <OpenPositions trades={openTrades} />
 

@@ -2,6 +2,7 @@
 
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
+import { marginStatusColor, MARGIN_COLOR_VAR } from "@/lib/status"
 import type { RiskRule, RiskUsage } from "@/lib/risk"
 import type { Account } from "@/components/accounts/accounts-context"
 import { RiskRulesForm } from "./risk-rules-form"
@@ -90,6 +91,15 @@ export function RiskAccountCard({
           value={perTradeUsd ? formatUSD(perTradeUsd) : rules?.max_risk_per_trade_pct ? `${rules.max_risk_per_trade_pct}%` : "—"}
           sub={rules?.max_risk_per_trade_pct ? `${rules.max_risk_per_trade_pct}% of equity` : "no cap"}
         />
+        {account.margin_level != null && (
+          <GaugeCell
+            label="Margin level"
+            pct={marginLevelToFillPct(Number(account.margin_level))}
+            value={`${Number(account.margin_level).toFixed(0)}%`}
+            sub={account.margin_used != null ? `${formatUSD(Number(account.margin_used))} used` : "broker live"}
+            color={MARGIN_COLOR_VAR[marginStatusColor(Number(account.margin_level))]}
+          />
+        )}
       </div>
 
       {/* Live exposure */}
@@ -178,6 +188,12 @@ function GaugeCell({
       <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }}>{sub}</div>
     </div>
   )
+}
+
+// Map a margin level (a percent like 487%) to a 0–100 gauge fill where lower
+// margin = fuller red bar. 100% (margin call) = fill 100; 600%+ = fill 0.
+function marginLevelToFillPct(level: number): number {
+  return Math.max(0, Math.min(100, 100 - (level - 100) / 5))
 }
 
 export function BehavioralSignalsPanel({ signals }: { signals: Array<{ key: string; title: string; level: "good" | "watch" | "high"; desc: string; icon: string }> }) {

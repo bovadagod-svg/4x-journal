@@ -5,10 +5,13 @@ import { Icon, PairFlag } from "@/components/icons"
 import {
   appendDuringTradeNote,
   deleteJournalEntry,
+  generateShareToken,
   getJournalEntry,
   removeDuringTradeNote,
+  revokeShareToken,
   saveJournalEntry,
 } from "@/lib/actions/journal-entries"
+import { suggestEntryTags, type CoachTagSuggestion } from "@/lib/actions/coach-tag"
 import { ScreenshotsTab } from "./screenshots-tab"
 
 type EntryRow = Awaited<ReturnType<typeof getJournalEntry>>
@@ -58,6 +61,12 @@ export function EntryEditorDrawer({
   const [ruleBreak, setRuleBreak] = useState(false)
   const [ruleBreakTags, setRuleBreakTags] = useState<string[]>([])
   const [isPublic, setIsPublic] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [shareBusy, setShareBusy] = useState(false)
+  const [copyHint, setCopyHint] = useState<"idle" | "copied">("idle")
+  const [coachSuggesting, setCoachSuggesting] = useState(false)
+  const [coachSuggestion, setCoachSuggestion] = useState<CoachTagSuggestion | null>(null)
+  const [coachError, setCoachError] = useState<string | null>(null)
 
   // Live (during-trade) notes — server-managed, not autosaved
   const [during, setDuring] = useState<DuringNote[]>([])
@@ -93,6 +102,7 @@ export function EntryEditorDrawer({
       setRuleBreak(!!e.rule_break)
       setRuleBreakTags(e.rule_break_tags ?? [])
       setIsPublic(!!e.is_public)
+      setShareToken(e.share_token ?? null)
       setDuring(Array.isArray(e.during_trade) ? (e.during_trade as DuringNote[]) : [])
       setShots(Array.isArray(e.screenshots) ? (e.screenshots as Screenshot[]) : [])
       setTab("pre")
@@ -396,6 +406,41 @@ export function EntryEditorDrawer({
                 <span>{isPublic ? "Public — visible at /u/<your-handle>" : "Private (default)"}</span>
               </button>
             </Field>
+            <Field
+              label="Private share link"
+              hint="One-shot URL for sending this entry to a coach without making it public. The link itself is the access control — anyone with it can read."
+            >
+              <ShareLinkField
+                entryId={entry?.id ?? null}
+                token={shareToken}
+                busy={shareBusy}
+                copyHint={copyHint}
+                onGenerate={async () => {
+                  if (!entry) return
+                  setShareBusy(true)
+                  const r = await generateShareToken(entry.id)
+                  setShareBusy(false)
+                  if (r.ok) setShareToken(r.token)
+                  else alert(r.error)
+                }}
+                onRevoke={async () => {
+                  if (!entry) return
+                  if (!confirm("Revoke the share link? Anyone holding it loses access immediately.")) return
+                  setShareBusy(true)
+                  const r = await revokeShareToken(entry.id)
+                  setShareBusy(false)
+                  if (r.ok) setShareToken(null)
+                  else alert(r.error)
+                }}
+                onCopy={async () => {
+                  if (!shareToken) return
+                  const url = `${window.location.origin}/share/${shareToken}`
+                  await navigator.clipboard.writeText(url)
+                  setCopyHint("copied")
+                  setTimeout(() => setCopyHint("idle"), 2000)
+                }}
+              />
+            </Field>
           </div>
         )}
 
@@ -421,6 +466,31 @@ export function EntryEditorDrawer({
 
         {tab === "tags" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {entry && (
+              <CoachSuggestionsRow
+                pending={coachSuggesting}
+                suggestion={coachSuggestion}
+                error={coachError}
+                onSuggest={async () => {
+                  setCoachError(null); setCoachSuggesting(true)
+                  const r = await suggestEntryTags(entry.id)
+                  setCoachSuggesting(false)
+                  if (r.ok) setCoachSuggestion(r.suggestion)
+                  else setCoachError(r.error)
+                }}
+                onAcceptAll={() => {
+                  if (!coachSuggestion) return
+                  if (coachSuggestion.mood && !mood) setMood(coachSuggestion.mood)
+                  setTags((prev) => Array.from(new Set([...prev, ...coachSuggestion.tags])))
+                  setMistakes((prev) => Array.from(new Set([...prev, ...coachSuggestion.mistakes])))
+                  setCoachSuggestion(null)
+                }}
+                onAcceptTag={(t) => setTags((prev) => Array.from(new Set([...prev, t])))}
+                onAcceptMistake={(t) => setMistakes((prev) => Array.from(new Set([...prev, t])))}
+                onAcceptMood={(m) => setMood(m)}
+                onDismiss={() => setCoachSuggestion(null)}
+              />
+            )}
             <Field label="Mood">
               <select
                 value={mood ?? ""}
@@ -487,6 +557,204 @@ function SaveStatusPill({ status }: { status: "idle" | "saving" | "saved" | "err
   if (status === "saved") return <span style={{ color: "var(--c-green-bright)" }}>Saved</span>
   if (status === "error") return <span style={{ color: "var(--c-red-bright)" }}>Save failed</span>
   return <span style={{ color: "var(--c-fg-dim)" }}>Idle</span>
+}
+
+function CoachSuggestionsRow({
+  pending, suggestion, error,
+  onSuggest, onAcceptAll, onAcceptTag, onAcceptMistake, onAcceptMood, onDismiss,
+}: {
+  pending: boolean
+  suggestion: CoachTagSuggestion | null
+  error: string | null
+  onSuggest: () => void
+  onAcceptAll: () => void
+  onAcceptTag: (t: string) => void
+  onAcceptMistake: (t: string) => void
+  onAcceptMood: (m: string) => void
+  onDismiss: () => void
+}) {
+  if (!suggestion && !error) {
+    return (
+      <button
+        type="button"
+        onClick={onSuggest}
+        disabled={pending}
+        className="btn"
+        style={{
+          alignSelf: "flex-start", fontSize: 11.5, padding: "5px 10px",
+          background: "rgba(105, 50, 212, 0.08)",
+          color: "var(--c-purple-bright)",
+          borderColor: "rgba(105, 50, 212, 0.3)",
+        }}
+      >
+        <Icon name="sparkle" size={11} />
+        <span>{pending ? "Reading…" : "Coach: suggest tags from prose"}</span>
+      </button>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        padding: 10,
+        background: "rgba(229, 162, 59, 0.08)", border: "1px solid rgba(229, 162, 59, 0.3)",
+        borderRadius: 8,
+        fontSize: 12, color: "var(--c-fg-muted)",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+      }}>
+        <span>Coach: {error}</span>
+        <button onClick={onDismiss} className="btn" style={{ fontSize: 10, padding: "3px 8px" }}>Dismiss</button>
+      </div>
+    )
+  }
+
+  if (!suggestion) return null
+
+  const empty =
+    suggestion.tags.length === 0 &&
+    suggestion.mistakes.length === 0 &&
+    !suggestion.mood
+
+  if (empty) {
+    return (
+      <div style={{
+        padding: 10,
+        background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)",
+        borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+      }}>
+        <span>Coach: not enough prose yet to suggest meaningful tags.</span>
+        <button onClick={onDismiss} className="btn" style={{ fontSize: 10, padding: "3px 8px" }}>OK</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      padding: 12,
+      background: "rgba(105, 50, 212, 0.06)",
+      border: "1px solid rgba(105, 50, 212, 0.25)",
+      borderRadius: 8,
+      display: "flex", flexDirection: "column", gap: 8,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="sparkle" size={12} color="var(--c-purple-bright)" />
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-purple-bright)" }}>Coach suggests</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }}>click chips to accept individually</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={onAcceptAll} className="btn btn-primary" style={{ fontSize: 10.5, padding: "3px 9px" }}>Accept all</button>
+          <button onClick={onDismiss} className="btn" style={{ fontSize: 10.5, padding: "3px 9px" }}>Dismiss</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {suggestion.mood && (
+          <ChipPill label={`mood: ${suggestion.mood}`} onClick={() => onAcceptMood(suggestion.mood!)} kind="mood" />
+        )}
+        {suggestion.tags.map((t) => (
+          <ChipPill key={`t-${t}`} label={t} onClick={() => onAcceptTag(t)} kind="tag" />
+        ))}
+        {suggestion.mistakes.map((t) => (
+          <ChipPill key={`m-${t}`} label={`mistake: ${t}`} onClick={() => onAcceptMistake(t)} kind="mistake" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ChipPill({ label, onClick, kind }: { label: string; onClick: () => void; kind: "tag" | "mistake" | "mood" }) {
+  const palette = kind === "mistake"
+    ? { bg: "rgba(190, 51, 61, 0.1)", border: "rgba(190, 51, 61, 0.35)", color: "var(--c-red-bright)" }
+    : kind === "mood"
+      ? { bg: "rgba(229, 162, 59, 0.1)", border: "rgba(229, 162, 59, 0.35)", color: "var(--c-amber)" }
+      : { bg: "rgba(105, 50, 212, 0.12)", border: "rgba(105, 50, 212, 0.35)", color: "var(--c-purple-bright)" }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: 11, fontWeight: 500,
+        padding: "3px 8px",
+        background: palette.bg,
+        color: palette.color,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 999,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function ShareLinkField({
+  entryId, token, busy, copyHint, onGenerate, onRevoke, onCopy,
+}: {
+  entryId: string | null
+  token: string | null
+  busy: boolean
+  copyHint: "idle" | "copied"
+  onGenerate: () => void
+  onRevoke: () => void
+  onCopy: () => void
+}) {
+  if (!entryId) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>
+        Save the entry once before generating a share link.
+      </div>
+    )
+  }
+
+  if (!token) {
+    return (
+      <button onClick={onGenerate} className="btn" disabled={busy}>
+        <Icon name="external" size={11} />
+        <span>{busy ? "Generating…" : "Generate share link"}</span>
+      </button>
+    )
+  }
+
+  const url = typeof window !== "undefined" ? `${window.location.origin}/share/${token}` : `/share/${token}`
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <input
+        readOnly
+        value={url}
+        onFocus={(e) => e.currentTarget.select()}
+        className="mono"
+        style={{
+          fontSize: 11.5,
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: "1px solid var(--c-border)",
+          background: "var(--c-bg-elev-2)",
+          color: "var(--c-fg)",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}
+      />
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button onClick={onCopy} className="btn" disabled={busy}>
+          <Icon name={copyHint === "copied" ? "check" : "external"} size={11} />
+          <span>{copyHint === "copied" ? "Copied" : "Copy link"}</span>
+        </button>
+        <button
+          onClick={onRevoke}
+          className="btn"
+          disabled={busy}
+          style={{
+            background: "rgba(190, 51, 61, 0.08)",
+            color: "var(--c-red-bright)",
+            borderColor: "rgba(190, 51, 61, 0.35)",
+          }}
+        >
+          <Icon name="x" size={11} />
+          <span>{busy ? "Revoking…" : "Revoke"}</span>
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

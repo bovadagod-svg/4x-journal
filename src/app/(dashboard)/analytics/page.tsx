@@ -42,6 +42,10 @@ export default async function AnalyticsPage() {
 
   const playbookMap = new Map(playbooks.map((p) => [p.id, p.name]))
   const accountMap = new Map(accounts.map((a) => [a.id, `${a.broker} · ${a.label}`]))
+  // Fan chart needs a dollar starting balance. Use total live equity across
+  // accounts; fall back to $10k for the empty-account demo case.
+  const totalEquity = accounts.reduce((s, a) => s + Number(a.equity ?? 0), 0)
+  const simStartBalance = totalEquity > 0 ? totalEquity : 10000
 
   // Fetch fills for closed trades only — scale-out analysis needs per-fill data.
   const closedIds = trades.filter((t) => t.status === "closed").map((t) => t.id)
@@ -65,6 +69,7 @@ export default async function AnalyticsPage() {
         playbookMap={playbookMap}
         accountMap={accountMap}
         fillsByTrade={fillsByTrade}
+        simStartBalance={simStartBalance}
       />
     </>
   )

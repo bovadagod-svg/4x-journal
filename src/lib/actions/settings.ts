@@ -47,6 +47,99 @@ export async function updateProfile(_prev: SettingsFormState, formData: FormData
   return applyPatch(parsed.data as Update)
 }
 
+// ─── Avatar ────────────────────────────────────────────────────────────────
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024 // 2 MB
+const ALLOWED_AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"])
+
+export type AvatarResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string }
+
+export async function uploadAvatar(formData: FormData): Promise<AvatarResult> {
+  const file = formData.get("file")
+  if (!(file instanceof File)) return { ok: false, error: "No file provided." }
+  if (file.size === 0) return { ok: false, error: "Empty file." }
+  if (file.size > MAX_AVATAR_BYTES) return { ok: false, error: "Image must be ≤ 2 MB." }
+  if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+    return { ok: false, error: "Use JPEG, PNG, WebP, or GIF." }
+  }
+
+  const { user, supabase } = await getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  // Path: <user_id>/avatar.<ext> — bucket policy keys off the first folder.
+  // Same path each time so re-uploads overwrite, no orphans to clean up.
+  const ext = file.type.split("/")[1].replace("jpeg", "jpg")
+  const path = `${user.id}/avatar.${ext}`
+
+  const { error: uploadErr } = await supabase.storage
+    .from("avatars")
+    .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "60" })
+  if (uploadErr) return { ok: false, error: uploadErr.message }
+
+  // Public URL + cache-buster so the new image shows immediately on next render.
+  const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path)
+  const url = `${pub.publicUrl}?v=${Date.now()}`
+
+  const { error: settingsErr } = await supabase
+    .from("user_settings")
+    .upsert({ user_id: user.id, avatar_url: url }, { onConflict: "user_id" })
+  if (settingsErr) return { ok: false, error: settingsErr.message }
+
+  revalidatePath("/settings")
+  revalidatePath("/")
+  return { ok: true, url }
+}
+
+export async function removeAvatar(): Promise<AvatarResult> {
+  const { user, supabase } = await getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  // Best-effort delete — we don't know the extension we used, so try all common ones.
+  await supabase.storage
+    .from("avatars")
+    .remove([`${user.id}/avatar.jpg`, `${user.id}/avatar.png`, `${user.id}/avatar.webp`, `${user.id}/avatar.gif`])
+
+  const { error } = await supabase
+    .from("user_settings")
+    .upsert({ user_id: user.id, avatar_url: null }, { onConflict: "user_id" })
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath("/settings")
+  revalidatePath("/")
+  return { ok: true, url: "" }
+}
+
+// ─── Email change ──────────────────────────────────────────────────────────
+const EmailChangeSchema = z.object({
+  email: z.email("Enter a valid email address."),
+})
+
+export type EmailChangeResult =
+  | { ok: true; pending: true }   // confirmation email sent to new + old
+  | { ok: false; error: string }
+
+/**
+ * Initiate an email change. Supabase sends a confirmation link to the *new*
+ * address (and a notice to the old one). Until the user clicks through, the
+ * sign-in email stays unchanged.
+ */
+export async function changeEmail(_prev: EmailChangeResult | undefined, formData: FormData): Promise<EmailChangeResult> {
+  const parsed = EmailChangeSchema.safeParse({ email: formData.get("email") })
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid email" }
+
+  const { user, supabase } = await getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+  if (parsed.data.email.toLowerCase() === user.email?.toLowerCase()) {
+    return { ok: false, error: "That's already your email." }
+  }
+
+  const { error } = await supabase.auth.updateUser({ email: parsed.data.email })
+  if (error) return { ok: false, error: error.message }
+
+  return { ok: true, pending: true }
+}
+
 // ─── Notifications ─────────────────────────────────────────────────────────
 const NotificationsSchema = z.object({
   notify_daily_dd: z.boolean(),
@@ -174,7 +267,7 @@ export async function updateTax(_prev: SettingsFormState, formData: FormData): P
   return applyPatch(parsed.data as Update)
 }
 
-// ─── Behavior rules (news avoidance + tilt protection) ────────────────────
+// ─── Behavior rules (news avoidance + tilt protection + coach auto-tag) ──
 const BehaviorSchema = z.object({
   news_avoidance_enabled: z.boolean(),
   news_avoidance_minutes_before: z.coerce.number().int().min(0).max(120),
@@ -182,6 +275,7 @@ const BehaviorSchema = z.object({
   tilt_enabled: z.boolean(),
   tilt_cutoff: z.coerce.number().int().min(2).max(10),
   tilt_cooldown_hours: z.coerce.number().int().min(1).max(48),
+  coach_auto_tag: z.boolean(),
 })
 
 export async function updateBehavior(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
@@ -192,6 +286,7 @@ export async function updateBehavior(_prev: SettingsFormState, formData: FormDat
     tilt_enabled: formData.get("tilt_enabled") === "true",
     tilt_cutoff: formData.get("tilt_cutoff"),
     tilt_cooldown_hours: formData.get("tilt_cooldown_hours"),
+    coach_auto_tag: formData.get("coach_auto_tag") === "true",
   })
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }
   return applyPatch(parsed.data as Update)

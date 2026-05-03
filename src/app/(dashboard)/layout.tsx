@@ -20,6 +20,7 @@ import { parseFxRates } from "@/lib/money"
 import { OnboardingModal } from "@/components/onboarding/onboarding-modal"
 import { RealtimeTrades } from "@/components/shell/realtime-trades"
 import { KeyboardShortcuts } from "@/components/shell/keyboard-shortcuts"
+import { CommandPalette } from "@/components/shell/command-palette"
 
 export default async function DashboardLayout({
   children,
@@ -119,6 +120,7 @@ export default async function DashboardLayout({
               <TweaksPanel />
               <RealtimeTrades userId={user.id} />
               <KeyboardShortcuts />
+              <CommandPalette />
               {showOnboarding && <OnboardingModal />}
             </TradeDetailDrawerProvider>
           </JournalDrawerProvider>

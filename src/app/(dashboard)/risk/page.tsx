@@ -9,6 +9,7 @@ import {
 } from "@/lib/risk"
 import { getTodayPnL } from "@/lib/queries/trades"
 import { RiskAccountCard, BehavioralSignalsPanel } from "@/components/risk/risk-account-card"
+import { MarginProjection } from "@/components/risk/margin-projection"
 
 export default async function RiskPage() {
   const m = SECTION_META.risk
@@ -81,14 +82,16 @@ export default async function RiskPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(520px, 1fr))", gap: 14 }}>
           {cards.map((c) => (
-            <RiskAccountCard
-              key={c.account.id}
-              account={c.account}
-              rules={c.rules}
-              usage={c.usage}
-              exposure={c.exposure}
-              todayClosedPnl={c.todayClosedPnl}
-            />
+            <div key={c.account.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <RiskAccountCard
+                account={c.account}
+                rules={c.rules}
+                usage={c.usage}
+                exposure={c.exposure}
+                todayClosedPnl={c.todayClosedPnl}
+              />
+              <MarginProjection account={c.account} />
+            </div>
           ))}
         </div>
       )}

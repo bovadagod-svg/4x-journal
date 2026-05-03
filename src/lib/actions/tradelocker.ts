@@ -8,7 +8,10 @@ import { computePnL } from "@/lib/finance"
 import type { Database } from "@/lib/supabase/database.types"
 import {
   tlGetAccounts,
+  tlClosePosition,
+  tlGetQuote,
   tlLogin,
+  tlModifyPosition,
   tlSyncTrades,
   TLError,
   type TradeLockerEnv,
@@ -216,11 +219,24 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
     .update({ external_account_meta: debugMeta })
     .eq("id", connectionId)
 
-  // Live-update local account balance/equity from TradeLocker state.
+  // Live-update local account balance/equity/margin from TradeLocker state.
   if (pull.state) {
-    const patch: { balance?: number; equity?: number } = {}
+    const patch: {
+      balance?: number
+      equity?: number
+      margin_used?: number
+      free_margin?: number
+      margin_level?: number
+      floating_pnl?: number
+      swap_total?: number
+    } = {}
     if (pull.state.balance != null) patch.balance = pull.state.balance
     if (pull.state.projectedBalance != null) patch.equity = pull.state.projectedBalance
+    if (pull.state.marginUsed != null) patch.margin_used = pull.state.marginUsed
+    if (pull.state.freeMargin != null) patch.free_margin = pull.state.freeMargin
+    if (pull.state.marginLevel != null) patch.margin_level = pull.state.marginLevel
+    if (pull.state.floatingPnl != null) patch.floating_pnl = pull.state.floatingPnl
+    if (pull.state.swapTotal != null) patch.swap_total = pull.state.swapTotal
     if (Object.keys(patch).length > 0) {
       await supabase.from("accounts").update(patch).eq("id", conn.account_id)
     }
@@ -282,6 +298,14 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
       filled_at: string
       external_provider: "tradelocker"
       external_id: string
+      commission?: number | null
+      swap?: number | null
+      tax?: number | null
+      request_price?: number | null
+      order_type?: string | null
+      execution_type?: string | null
+      magic_number?: string | null
+      broker_comment?: string | null
     }
     const fills: FillInsert[] = []
     for (const p of all) {
@@ -299,6 +323,14 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
           filled_at: p.openedAt,
           external_provider: "tradelocker",
           external_id: `${p.externalId}:entry`,
+          commission: p.entryMeta.commission,
+          swap: p.entryMeta.swap,
+          tax: p.entryMeta.tax,
+          request_price: p.entryMeta.requestPrice,
+          order_type: p.entryMeta.orderType,
+          execution_type: p.entryMeta.executionType,
+          magic_number: p.entryMeta.magicNumber,
+          broker_comment: p.entryMeta.comment,
         })
       }
       // Exit fill — only for closed trades.
@@ -313,6 +345,14 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
           filled_at: p.closedAt,
           external_provider: "tradelocker",
           external_id: `${p.externalId}:exit`,
+          commission: p.exitMeta?.commission ?? null,
+          swap: p.exitMeta?.swap ?? null,
+          tax: p.exitMeta?.tax ?? null,
+          request_price: p.exitMeta?.requestPrice ?? null,
+          order_type: p.exitMeta?.orderType ?? null,
+          execution_type: p.exitMeta?.executionType ?? null,
+          magic_number: p.exitMeta?.magicNumber ?? null,
+          broker_comment: p.exitMeta?.comment ?? null,
         })
       }
     }
@@ -406,6 +446,274 @@ export async function disconnectTradeLockerConnection(connectionId: string, opts
   if (error) return { ok: false as const, error: error.message }
   revalidatePath("/accounts")
   return { ok: true as const }
+}
+
+// ── Per-trade actions (modify SL/TP, close at market) ─────────────────────
+
+/**
+ * Modify SL / TP on a TradeLocker-synced open trade. Pass new prices (null
+ * = leave alone). Returns the broker error string when TL rejects, so the
+ * UI can surface it inline.
+ *
+ * Auth: requires the trade's owning user to be signed in.
+ */
+export async function brokerModifyPosition(args: {
+  tradeId: string
+  stop_price?: number | null
+  target_price?: number | null
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const { data: trade } = await supabase
+    .from("trades")
+    .select("id, user_id, account_id, external_id, external_provider, status, stop_price, target_price")
+    .eq("id", args.tradeId)
+    .maybeSingle()
+  if (!trade || trade.user_id !== user.id) return { ok: false, error: "Trade not found." }
+  if (trade.external_provider !== "tradelocker" || !trade.external_id) {
+    return { ok: false, error: "Only TradeLocker-synced trades can be modified from here." }
+  }
+  if (trade.status !== "open") return { ok: false, error: "Trade is not open." }
+
+  const { data: conn } = await supabase
+    .from("broker_connections")
+    .select("credentials, external_account_id, external_account_meta")
+    .eq("account_id", trade.account_id)
+    .eq("provider", "tradelocker")
+    .eq("enabled", true)
+    .maybeSingle()
+  if (!conn) return { ok: false, error: "No active TradeLocker connection on this account." }
+
+  const creds = conn.credentials as { email?: string; password?: string; server?: string; env?: TradeLockerEnv }
+  if (!creds.email || !creds.password || !creds.server || !creds.env) {
+    return { ok: false, error: "Connection is missing credentials. Re-connect this account." }
+  }
+
+  let accessToken: string
+  try {
+    accessToken = (await tlLogin({ env: creds.env, email: creds.email, password: creds.password, server: creds.server })).accessToken
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+
+  const meta = conn.external_account_meta as { accNum?: string }
+  const result = await tlModifyPosition({
+    env: creds.env,
+    accessToken,
+    accNum: meta.accNum ?? "1",
+    positionId: trade.external_id,
+    stopLoss: args.stop_price,
+    takeProfit: args.target_price,
+  })
+  if (!result.ok) return { ok: false, error: `TradeLocker rejected the modify: ${result.error}` }
+
+  // Mirror locally so the UI updates immediately. Realtime subscription on
+  // /ledger and the trade detail drawer will pick this up too.
+  const patch: { stop_price?: number | null; target_price?: number | null } = {}
+  if (args.stop_price !== undefined) patch.stop_price = args.stop_price
+  if (args.target_price !== undefined) patch.target_price = args.target_price
+  if (Object.keys(patch).length > 0) {
+    await supabase.from("trades").update(patch).eq("id", trade.id)
+  }
+
+  // Append a journal-audit note (newline-separated) so the modification is
+  // captured for the user's records.
+  const stamp = new Date().toISOString()
+  const what = []
+  if (args.stop_price !== undefined && args.stop_price !== Number(trade.stop_price)) what.push(`SL → ${args.stop_price ?? "—"}`)
+  if (args.target_price !== undefined && args.target_price !== Number(trade.target_price)) what.push(`TP → ${args.target_price ?? "—"}`)
+  if (what.length > 0) {
+    const auditLine = `[${stamp}] Broker modify: ${what.join(", ")}`
+    const { data: cur } = await supabase.from("trades").select("notes").eq("id", trade.id).maybeSingle()
+    const newNotes = cur?.notes ? `${cur.notes}\n${auditLine}` : auditLine
+    await supabase.from("trades").update({ notes: newNotes }).eq("id", trade.id)
+  }
+
+  revalidatePath("/ledger")
+  revalidatePath("/dashboard")
+  return { ok: true }
+}
+
+/**
+ * Close a TradeLocker-synced open position at market. The next sync will
+ * fetch the actual fill price + close timestamp; this function just sends
+ * the close command and writes a "closing" placeholder note.
+ */
+export async function brokerClosePosition(tradeId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const { data: trade } = await supabase
+    .from("trades")
+    .select("id, user_id, account_id, external_id, external_provider, status, notes")
+    .eq("id", tradeId)
+    .maybeSingle()
+  if (!trade || trade.user_id !== user.id) return { ok: false, error: "Trade not found." }
+  if (trade.external_provider !== "tradelocker" || !trade.external_id) {
+    return { ok: false, error: "Only TradeLocker-synced trades can be closed from here." }
+  }
+  if (trade.status !== "open") return { ok: false, error: "Trade is not open." }
+
+  const { data: conn } = await supabase
+    .from("broker_connections")
+    .select("id, credentials, external_account_meta")
+    .eq("account_id", trade.account_id)
+    .eq("provider", "tradelocker")
+    .eq("enabled", true)
+    .maybeSingle()
+  if (!conn) return { ok: false, error: "No active TradeLocker connection on this account." }
+
+  const creds = conn.credentials as { email?: string; password?: string; server?: string; env?: TradeLockerEnv }
+  if (!creds.email || !creds.password || !creds.server || !creds.env) {
+    return { ok: false, error: "Connection is missing credentials. Re-connect this account." }
+  }
+
+  let accessToken: string
+  try {
+    accessToken = (await tlLogin({ env: creds.env, email: creds.email, password: creds.password, server: creds.server })).accessToken
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+
+  const meta = conn.external_account_meta as { accNum?: string }
+  const result = await tlClosePosition({
+    env: creds.env,
+    accessToken,
+    accNum: meta.accNum ?? "1",
+    positionId: trade.external_id,
+  })
+  if (!result.ok) return { ok: false, error: `TradeLocker rejected the close: ${result.error}` }
+
+  // Append a journal-audit note so the action is captured. The next sync
+  // will fill in the actual exit price + closed_at, and the realtime
+  // subscription will refresh the UI.
+  const stamp = new Date().toISOString()
+  const auditLine = `[${stamp}] Broker close requested at market`
+  const newNotes = trade.notes ? `${trade.notes}\n${auditLine}` : auditLine
+  await supabase.from("trades").update({ notes: newNotes }).eq("id", trade.id)
+
+  // Best-effort immediate sync so the user doesn't have to wait for cron.
+  // Failures here are silently ignored — close was already sent to broker.
+  try {
+    await syncTradeLockerConnection(conn.id)
+  } catch { /* swallow */ }
+
+  revalidatePath("/ledger")
+  revalidatePath("/dashboard")
+  return { ok: true }
+}
+
+// ── Live quotes ───────────────────────────────────────────────────────────
+
+export type LiveQuote = {
+  symbol: string
+  bid: number | null
+  ask: number | null
+  mid: number | null
+  ts: string
+  /** Floating P&L in dollars at the mid price (only when computable). */
+  floatingPnl?: number
+}
+
+export type LiveQuotesResult = {
+  /** Map keyed by trade id → quote + computed floating P&L. */
+  byTradeId: Record<string, LiveQuote>
+  /** Wall-clock timestamp the server fetched at. */
+  fetchedAt: string
+  /** True when no TL connection exists for any open position (no work to do). */
+  empty?: boolean
+}
+
+/**
+ * Fetch live bid/ask for every open TradeLocker-synced position the user
+ * holds, and compute a floating P&L per position at the mid price.
+ * Designed to be called from a client polling loop (every 30s is safe).
+ */
+export async function getLiveQuotesForOpen(): Promise<LiveQuotesResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { byTradeId: {}, fetchedAt: new Date().toISOString(), empty: true }
+
+  const { data: opens } = await supabase
+    .from("trades")
+    .select("id, account_id, external_id, side, size, entry_price, pair")
+    .eq("user_id", user.id)
+    .eq("status", "open")
+    .eq("external_provider", "tradelocker")
+  if (!opens || opens.length === 0) {
+    return { byTradeId: {}, fetchedAt: new Date().toISOString(), empty: true }
+  }
+
+  // Group by account so we share one TL session per account.
+  const byAccount = new Map<string, typeof opens>()
+  for (const t of opens) {
+    let arr = byAccount.get(t.account_id)
+    if (!arr) { arr = []; byAccount.set(t.account_id, arr) }
+    arr.push(t)
+  }
+
+  const byTradeId: Record<string, LiveQuote> = {}
+
+  for (const [accountId, trades] of byAccount) {
+    const { data: conn } = await supabase
+      .from("broker_connections")
+      .select("credentials, external_account_id, external_account_meta")
+      .eq("account_id", accountId)
+      .eq("provider", "tradelocker")
+      .eq("enabled", true)
+      .maybeSingle()
+    if (!conn) continue
+
+    const creds = conn.credentials as { email?: string; password?: string; server?: string; env?: TradeLockerEnv }
+    if (!creds.email || !creds.password || !creds.server || !creds.env) continue
+
+    let accessToken: string
+    try {
+      accessToken = (await tlLogin({ env: creds.env, email: creds.email, password: creds.password, server: creds.server })).accessToken
+    } catch {
+      continue
+    }
+
+    const meta = conn.external_account_meta as { accNum?: string; instrumentIdsByExternalId?: Record<string, string> }
+    const accNum = meta.accNum ?? "1"
+
+    // Best-effort instrument lookup. If we don't have the instrumentId
+    // mapping cached, skip — the next sync will populate it.
+    const idMap = meta.instrumentIdsByExternalId ?? {}
+
+    for (const t of trades) {
+      if (!t.external_id) continue
+      const instrumentId = idMap[t.external_id]
+      if (!instrumentId) continue
+
+      const q = await tlGetQuote({
+        env: creds.env,
+        accessToken,
+        accNum,
+        instrumentId,
+      })
+      if (!q) continue
+
+      const mid = q.bid != null && q.ask != null ? (q.bid + q.ask) / 2 : (q.bid ?? q.ask ?? null)
+      const floatingPnl = mid != null
+        ? Number((((t.side === "long" ? mid - Number(t.entry_price) : Number(t.entry_price) - mid) * Number(t.size)).toFixed(2)))
+        : undefined
+
+      byTradeId[t.id] = {
+        symbol: t.pair,
+        bid: q.bid,
+        ask: q.ask,
+        mid,
+        ts: q.ts,
+        floatingPnl,
+      }
+    }
+  }
+
+  return { byTradeId, fetchedAt: new Date().toISOString() }
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────

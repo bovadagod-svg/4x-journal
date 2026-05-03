@@ -129,6 +129,7 @@ export function KeyboardShortcuts() {
           </button>
         </div>
         <div style={{ display: "grid", gap: 6 }}>
+          <Row keys={["⌘", "K"]} label="Open command palette" />
           <Row keys={["c"]} label="Log a new trade" />
           <Row keys={["?"]} label="Show/hide this help" />
           <Row keys={["esc"]} label="Close modals + drawers" />

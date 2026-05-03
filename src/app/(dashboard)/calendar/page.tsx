@@ -36,7 +36,7 @@ export default async function CalendarPage({
         <SectionStub
           icon={m.icon}
           title="No upcoming events"
-          description="Real ingest from ForexFactory / TradingEconomics arrives in Phase 9. Seed data may be exhausted."
+          description="Either nothing high-impact is scheduled for your watchlist's currencies in the next few days, or the events feed hasn't refreshed yet. Widen your watchlist on the Watchlist page to see more."
         />
       </>
     )

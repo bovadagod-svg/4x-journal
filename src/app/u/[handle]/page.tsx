@@ -50,13 +50,26 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
 
         {/* Hero */}
         <div className="card" style={{ padding: 22, display: "flex", gap: 18, alignItems: "center" }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: "50%",
-            background: "linear-gradient(135deg, #6932D4, #B79CFF)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 26, fontWeight: 600, color: "#fff", fontFamily: "var(--font-display)",
-            flexShrink: 0,
-          }}>{initials || "?"}</div>
+          {profile.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={profile.avatar_url}
+              alt=""
+              style={{
+                width: 72, height: 72, borderRadius: "50%",
+                objectFit: "cover", flexShrink: 0,
+                border: "1px solid var(--c-border)",
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 72, height: 72, borderRadius: "50%",
+              background: "linear-gradient(135deg, #6932D4, #B79CFF)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 26, fontWeight: 600, color: "#fff", fontFamily: "var(--font-display)",
+              flexShrink: 0,
+            }}>{initials || "?"}</div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 600 }}>
               {profile.display_name ?? `@${profile.handle}`}

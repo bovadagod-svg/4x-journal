@@ -7,7 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
-  __InternalSupabase: { PostgrestVersion: "14.5" }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
       accounts: {
@@ -18,10 +22,15 @@ export type Database = {
           created_at: string
           currency: string
           equity: number
+          floating_pnl: number | null
+          free_margin: number | null
           id: string
           is_default: boolean
           label: string
+          margin_level: number | null
+          margin_used: number | null
           status: string
+          swap_total: number | null
           updated_at: string
           user_id: string
         }
@@ -32,10 +41,15 @@ export type Database = {
           created_at?: string
           currency?: string
           equity?: number
+          floating_pnl?: number | null
+          free_margin?: number | null
           id?: string
           is_default?: boolean
           label?: string
+          margin_level?: number | null
+          margin_used?: number | null
           status?: string
+          swap_total?: number | null
           updated_at?: string
           user_id: string
         }
@@ -46,10 +60,15 @@ export type Database = {
           created_at?: string
           currency?: string
           equity?: number
+          floating_pnl?: number | null
+          free_margin?: number | null
           id?: string
           is_default?: boolean
           label?: string
+          margin_level?: number | null
+          margin_used?: number | null
           status?: string
+          swap_total?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -108,7 +127,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
-          { foreignKeyName: "broker_connections_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] }
+          {
+            foreignKeyName: "broker_connections_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       economic_events: {
@@ -150,39 +175,6 @@ export type Database = {
         }
         Relationships: []
       }
-      watchlist_pairs: {
-        Row: {
-          bias: string
-          created_at: string
-          id: string
-          pair: string
-          setup_note: string | null
-          sort_order: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          bias?: string
-          created_at?: string
-          id?: string
-          pair: string
-          setup_note?: string | null
-          sort_order?: number
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          bias?: string
-          created_at?: string
-          id?: string
-          pair?: string
-          setup_note?: string | null
-          sort_order?: number
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       journal_entries: {
         Row: {
           account_id: string | null
@@ -202,6 +194,7 @@ export type Database = {
           rule_break: boolean
           rule_break_tags: string[]
           screenshots: Json
+          share_token: string | null
           tags: string[]
           title: string | null
           trade_id: string | null
@@ -225,6 +218,7 @@ export type Database = {
           rule_break?: boolean
           rule_break_tags?: string[]
           screenshots?: Json
+          share_token?: string | null
           tags?: string[]
           title?: string | null
           trade_id?: string | null
@@ -248,49 +242,35 @@ export type Database = {
           rule_break?: boolean
           rule_break_tags?: string[]
           screenshots?: Json
+          share_token?: string | null
           tags?: string[]
           title?: string | null
           trade_id?: string | null
           user_id?: string
         }
         Relationships: [
-          { foreignKeyName: "journal_entries_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] },
-          { foreignKeyName: "journal_entries_playbook_id_fkey"; columns: ["playbook_id"]; isOneToOne: false; referencedRelation: "playbooks"; referencedColumns: ["id"] },
-          { foreignKeyName: "journal_entries_trade_id_fkey"; columns: ["trade_id"]; isOneToOne: false; referencedRelation: "trades"; referencedColumns: ["id"] }
+          {
+            foreignKeyName: "journal_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entries_playbook_id_fkey"
+            columns: ["playbook_id"]
+            isOneToOne: false
+            referencedRelation: "playbooks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entries_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
         ]
-      }
-      push_subscriptions: {
-        Row: {
-          id: string
-          user_id: string
-          endpoint: string
-          p256dh: string
-          auth: string
-          user_agent: string | null
-          created_at: string
-          last_used_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          endpoint: string
-          p256dh: string
-          auth: string
-          user_agent?: string | null
-          created_at?: string
-          last_used_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          endpoint?: string
-          p256dh?: string
-          auth?: string
-          user_agent?: string | null
-          created_at?: string
-          last_used_at?: string
-        }
-        Relationships: []
       }
       playbooks: {
         Row: {
@@ -352,6 +332,39 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          last_used_at: string
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          last_used_at?: string
+          p256dh: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          last_used_at?: string
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       risk_rules: {
         Row: {
           account_id: string
@@ -396,60 +409,96 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
-          { foreignKeyName: "risk_rules_account_id_fkey"; columns: ["account_id"]; isOneToOne: true; referencedRelation: "accounts"; referencedColumns: ["id"] }
+          {
+            foreignKeyName: "risk_rules_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       trade_fills: {
         Row: {
+          broker_comment: string | null
+          commission: number | null
           created_at: string
+          execution_type: string | null
           external_id: string | null
           external_provider: string | null
           filled_at: string
           id: string
           kind: string
+          magic_number: string | null
           notes: string | null
+          order_type: string | null
           pnl_contribution: number | null
           price: number
           r_realized: number | null
           reason: string | null
+          request_price: number | null
           size: number
+          swap: number | null
+          tax: number | null
           trade_id: string
           user_id: string
         }
         Insert: {
+          broker_comment?: string | null
+          commission?: number | null
           created_at?: string
+          execution_type?: string | null
           external_id?: string | null
           external_provider?: string | null
           filled_at?: string
           id?: string
           kind: string
+          magic_number?: string | null
           notes?: string | null
+          order_type?: string | null
           pnl_contribution?: number | null
           price: number
           r_realized?: number | null
           reason?: string | null
+          request_price?: number | null
           size: number
+          swap?: number | null
+          tax?: number | null
           trade_id: string
           user_id: string
         }
         Update: {
+          broker_comment?: string | null
+          commission?: number | null
           created_at?: string
+          execution_type?: string | null
           external_id?: string | null
           external_provider?: string | null
           filled_at?: string
           id?: string
           kind?: string
+          magic_number?: string | null
           notes?: string | null
+          order_type?: string | null
           pnl_contribution?: number | null
           price?: number
           r_realized?: number | null
           reason?: string | null
+          request_price?: number | null
           size?: number
+          swap?: number | null
+          tax?: number | null
           trade_id?: string
           user_id?: string
         }
         Relationships: [
-          { foreignKeyName: "trade_fills_trade_id_fkey"; columns: ["trade_id"]; isOneToOne: false; referencedRelation: "trades"; referencedColumns: ["id"] }
+          {
+            foreignKeyName: "trade_fills_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
         ]
       }
       trades: {
@@ -538,8 +587,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
-          { foreignKeyName: "trades_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] },
-          { foreignKeyName: "trades_playbook_id_fkey"; columns: ["playbook_id"]; isOneToOne: false; referencedRelation: "playbooks"; referencedColumns: ["id"] }
+          {
+            foreignKeyName: "trades_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trades_playbook_id_fkey"
+            columns: ["playbook_id"]
+            isOneToOne: false
+            referencedRelation: "playbooks"
+            referencedColumns: ["id"]
+          },
         ]
       }
       user_settings: {
@@ -548,7 +609,9 @@ export type Database = {
           account_scope: string
           atr_multiplier: number
           atr_period: number
+          avatar_url: string | null
           cap_by_prop_rule: boolean
+          coach_auto_tag: boolean
           coach_cache: Json | null
           confirm_above_pct: number
           created_at: string
@@ -599,7 +662,9 @@ export type Database = {
           account_scope?: string
           atr_multiplier?: number
           atr_period?: number
+          avatar_url?: string | null
           cap_by_prop_rule?: boolean
+          coach_auto_tag?: boolean
           coach_cache?: Json | null
           confirm_above_pct?: number
           created_at?: string
@@ -650,7 +715,9 @@ export type Database = {
           account_scope?: string
           atr_multiplier?: number
           atr_period?: number
+          avatar_url?: string | null
           cap_by_prop_rule?: boolean
+          coach_auto_tag?: boolean
           coach_cache?: Json | null
           confirm_above_pct?: number
           created_at?: string
@@ -697,49 +764,244 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: [
-          { foreignKeyName: "user_settings_default_playbook_id_fkey"; columns: ["default_playbook_id"]; isOneToOne: false; referencedRelation: "playbooks"; referencedColumns: ["id"] }
+          {
+            foreignKeyName: "user_settings_default_playbook_id_fkey"
+            columns: ["default_playbook_id"]
+            isOneToOne: false
+            referencedRelation: "playbooks"
+            referencedColumns: ["id"]
+          },
         ]
       }
+      watchlist_pairs: {
+        Row: {
+          bias: string
+          created_at: string
+          id: string
+          pair: string
+          setup_note: string | null
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bias?: string
+          created_at?: string
+          id?: string
+          pair: string
+          setup_note?: string | null
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bias?: string
+          created_at?: string
+          id?: string
+          pair?: string
+          setup_note?: string | null
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
-    Views: { [_ in never]: never }
+    Views: {
+      [_ in never]: never
+    }
     Functions: {
-      recompute_trade_aggregates: {
-        Args: { p_trade_id: string }
-        Returns: undefined
+      consume_rate_limit: {
+        Args: { p_key: string; p_window_seconds: number }
+        Returns: number
+      }
+      get_entry_by_share_token: {
+        Args: { p_token: string }
+        Returns: {
+          cold_review: string
+          created_at: string
+          display_name: string
+          handle: string
+          id: string
+          kind: string
+          last_edited_at: string
+          lessons: string
+          mood: string
+          post_trade: string
+          pre_trade: string
+          tags: string[]
+          title: string
+          trade_pair: string
+          trade_pnl: number
+          trade_r: number
+          trade_side: string
+        }[]
+      }
+      get_public_entries: {
+        Args: { p_limit?: number; p_user_id: string }
+        Returns: {
+          cold_review: string
+          created_at: string
+          id: string
+          lessons: string
+          mood: string
+          post_trade: string
+          pre_trade: string
+          tags: string[]
+          title: string
+          trade_pair: string
+          trade_pnl: number
+          trade_r: number
+          trade_side: string
+        }[]
       }
       get_public_profile: {
         Args: { p_handle: string }
         Returns: {
-          user_id: string
-          display_name: string | null
-          handle: string | null
+          avatar_url: string | null
+          display_name: string
+          handle: string
           joined_at: string
-          trade_count: number
-          win_count: number
           loss_count: number
           total_pnl: number
+          trade_count: number
+          user_id: string
+          win_count: number
         }[]
       }
-      get_public_entries: {
-        Args: { p_user_id: string; p_limit?: number }
-        Returns: {
-          id: string
-          title: string | null
-          pre_trade: string | null
-          post_trade: string | null
-          cold_review: string | null
-          lessons: string | null
-          tags: string[]
-          mood: string | null
-          created_at: string
-          trade_pair: string | null
-          trade_side: string | null
-          trade_pnl: number | null
-          trade_r: number | null
-        }[]
+      recompute_trade_aggregates: {
+        Args: { p_trade_id: string }
+        Returns: undefined
       }
     }
-    Enums: { [_ in never]: never }
-    CompositeTypes: { [_ in never]: never }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const

@@ -13,6 +13,7 @@ export type BehaviorState = {
   tilt_enabled: boolean
   tilt_cutoff: number
   tilt_cooldown_hours: number
+  coach_auto_tag: boolean
 }
 
 export function BehaviorPanel({ initial }: { initial: BehaviorState }) {
@@ -64,6 +65,16 @@ export function BehaviorPanel({ initial }: { initial: BehaviorState }) {
         </SettingsRow>
         <SettingsRow label="Cool-down length" hint="Block new trade entries during this window" last>
           <NumberSlider name="tilt_cooldown_hours" value={tracker.current.tilt_cooldown_hours} onChange={(v) => set("tilt_cooldown_hours", v)} min={1} max={24} step={1} suffix=" h" />
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection icon="sparkle" title="Coach AI auto-tagging" subtitle="Read your prose and suggest tags / mistakes / mood">
+        <SettingsRow
+          label="Enable auto-tag suggestions"
+          hint="Adds a 'Coach: suggest tags' button on the entry editor's Tags tab. Each click costs ~1 cent in API spend; gated behind this toggle to avoid surprise charges. Requires ANTHROPIC_API_KEY set in your environment."
+          last
+        >
+          <Toggle name="coach_auto_tag" checked={tracker.current.coach_auto_tag} onChange={(v) => set("coach_auto_tag", v)} />
         </SettingsRow>
       </SettingsSection>
 

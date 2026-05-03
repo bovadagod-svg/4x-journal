@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient as createServerClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/database.types"
 import { computePnL, computeR } from "@/lib/finance"
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit"
 
 /**
  * TradingView webhook ingest.
@@ -37,6 +38,20 @@ export async function POST(
 
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "service-role key not configured" }, { status: 500 })
+  }
+
+  // Rate limit per user — 60 trade webhooks per minute is generous for any
+  // legitimate alert flow and squashes runaway TradingView loops or basic
+  // brute-force attempts on the secret.
+  const rl = await checkRateLimit(rateLimitKey("tv-webhook", userId), {
+    limit: 60,
+    windowSeconds: 60,
+  })
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "rate limit exceeded — slow down" },
+      { status: 429, headers: { "Retry-After": "60" } },
+    )
   }
 
   const admin = createServerClient<Database>(

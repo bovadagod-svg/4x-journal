@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { Icon } from "@/components/icons"
+import { captureException } from "@/lib/observability"
 
 /**
  * Generic route-level error fallback. Used by every section's `error.tsx` so
@@ -22,12 +23,9 @@ export function ErrorFallback({
   section: string
 }) {
   useEffect(() => {
-    // Log to console in dev so the actual stack is visible. In prod, Next
-    // already logs to the platform; this is a no-op.
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.error(`[${section}] route error`, error)
-    }
+    // Log to console in dev so the actual stack is visible. In prod, also
+    // POSTs to Sentry's HTTP envelope endpoint when SENTRY_DSN is set.
+    captureException(error, { section, digest: error.digest })
   }, [error, section])
 
   return (

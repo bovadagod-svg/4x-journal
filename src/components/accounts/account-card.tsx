@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Icon } from "@/components/icons"
 import { Sparkline } from "@/components/charts/sparkline"
 import { formatUSD } from "@/lib/finance"
+import { marginStatusColor, MARGIN_COLOR_VAR, MARGIN_BG_VAR } from "@/lib/status"
 import { AccountFormModal } from "./account-form-modal"
 import { AccountDrawer } from "./account-drawer"
 import type { Account } from "./accounts-context"
@@ -103,6 +104,9 @@ export function AccountCard({
           <Stat label="Trades" value={String(tradeCount)} />
         </div>
 
+        {/* Margin level (only when broker reports it) */}
+        {account.margin_level != null && <MarginBar account={account} />}
+
         {/* Footer chips */}
         <div style={{ padding: "10px 18px 14px", borderTop: "1px solid var(--c-border)", background: "var(--c-bg-elev-2)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <span className="chip" style={{ fontSize: 10, textTransform: "uppercase" }}>{account.currency}</span>
@@ -172,6 +176,31 @@ export function ConnectTile({ onClick }: { onClick: () => void }) {
         Manual entry · CSV import · TradeLocker connection
       </div>
     </button>
+  )
+}
+
+function MarginBar({ account }: { account: Account }) {
+  const level = account.margin_level == null ? null : Number(account.margin_level)
+  const used = account.margin_used == null ? null : Number(account.margin_used)
+  const equity = Number(account.equity)
+  // Bar represents margin used vs equity. Cap at 100% so a margin call (used >= equity) shows full.
+  const usedPct = used != null && equity > 0 ? Math.min(100, (used / equity) * 100) : 0
+  const status = marginStatusColor(level)
+  const fg = MARGIN_COLOR_VAR[status]
+  const bg = MARGIN_BG_VAR[status]
+  return (
+    <div style={{ padding: "0 18px 12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <span style={{ fontSize: 10, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Margin</span>
+        <span className="tnum" style={{ fontSize: 11.5, fontWeight: 500, color: fg }}>
+          {level != null ? `${level.toFixed(0)}%` : "—"}
+          {used != null && <span style={{ color: "var(--c-fg-dim)", marginLeft: 6, fontWeight: 400 }}>· {formatUSD(used)} used</span>}
+        </span>
+      </div>
+      <div style={{ position: "relative", height: 6, background: "var(--c-bg-elev-3)", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, width: `${usedPct}%`, background: bg, borderTop: `1px solid ${fg}`, transition: "width 0.2s" }} />
+      </div>
+    </div>
   )
 }
 

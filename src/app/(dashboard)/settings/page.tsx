@@ -59,6 +59,7 @@ export default async function SettingsPage({
       <ProfilePanel
         email={user.email ?? ""}
         userId={user.id}
+        avatarUrl={s?.avatar_url ?? null}
         initial={{
           display_name: s?.display_name ?? null,
           handle: s?.handle ?? null,
@@ -105,6 +106,7 @@ export default async function SettingsPage({
           tilt_enabled: s?.tilt_enabled ?? false,
           tilt_cutoff: Number(s?.tilt_cutoff ?? 3),
           tilt_cooldown_hours: Number(s?.tilt_cooldown_hours ?? 4),
+          coach_auto_tag: s?.coach_auto_tag ?? false,
         }}
       />
     ),

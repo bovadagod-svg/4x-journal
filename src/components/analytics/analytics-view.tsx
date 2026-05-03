@@ -15,6 +15,8 @@ import { PairSideMatrix } from "./pair-side-matrix"
 import { RuleBreakImpact } from "./rule-break-impact"
 import { CalendarHeatmap } from "./calendar-heatmap"
 import { ScaleOutAnalysis } from "./scale-out-analysis"
+import { RiskOfRuinCard } from "./risk-of-ruin-card"
+import { MonteCarloCard } from "./monte-carlo-card"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 import type { TradeFill } from "@/lib/queries/trade-fills"
 
@@ -27,12 +29,14 @@ export function AnalyticsView({
   playbookMap,
   accountMap,
   fillsByTrade,
+  simStartBalance,
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
   playbookMap: Map<string, string>
   accountMap: Map<string, string>
   fillsByTrade: Map<string, TradeFill[]>
+  simStartBalance: number
 }) {
   const [range, setRange] = useState<Range>("30D")
 
@@ -95,6 +99,11 @@ export function AnalyticsView({
         <DrawdownAnalysis trades={filtered} />
       </div>
 
+      {/* Risk-of-Ruin + Forward equity simulation — paired math cards.
+          Both Monte Carlo, both derived from the same closed-trade stats. */}
+      <RiskOfRuinCard stats={stats} />
+      <MonteCarloCard stats={stats} startBalance={simStartBalance} />
+
       {/* Session edge + Pair × Side matrix */}
       <SessionAnalysis trades={filtered} />
       <PairSideMatrix trades={filtered} />
@@ -119,6 +128,9 @@ export function AnalyticsView({
         <BreakdownBars title="By Side" subtitle="Long vs short edge" groups={bySide(filtered)} />
         <BreakdownBars title="By Account" subtitle="Performance per connected broker" groups={byAccount(filtered, accountMap)} />
       </div>
+
+      {/* Order-type breakdown — needs broker-synced order_type on entry fills */}
+      <OrderTypeBreakdown trades={filtered} fillsByTrade={fillsByTrade} />
 
       {/* Day-of-week × hour heatmap */}
       <DayHourGrid trades={filtered} />
@@ -319,6 +331,38 @@ function BreakdownBars({ title, subtitle, groups, pairFlags }: { title: string; 
         })}
       </div>
     </div>
+  )
+}
+
+// ── Order-type breakdown ──────────────────────────────────────────────────
+function OrderTypeBreakdown({
+  trades, fillsByTrade,
+}: {
+  trades: Trade[]
+  fillsByTrade: Map<string, TradeFill[]>
+}) {
+  const groups = useMemo(() => byOrderType(trades, fillsByTrade), [trades, fillsByTrade])
+  const totalTagged = groups.reduce((s, g) => s + g.count, 0)
+
+  if (totalTagged < 5) {
+    return (
+      <div className="card">
+        <h3 className="card-title">By Order Type</h3>
+        <p className="card-subtitle">Market vs limit vs stop edge — patience pays</p>
+        <p style={{ marginTop: 14, fontSize: 12.5, color: "var(--c-fg-muted)" }}>
+          Connect TradeLocker to populate order-type breakdowns. Manual entries don&apos;t carry this field.
+        </p>
+      </div>
+    )
+  }
+
+  const narrative = orderTypeNarrative(groups)
+  return (
+    <BreakdownBars
+      title="By Order Type"
+      subtitle={narrative ?? "Market vs limit vs stop edge — patience pays"}
+      groups={groups}
+    />
   )
 }
 
@@ -611,6 +655,41 @@ function byAccount(trades: Trade[], accountMap: Map<string, string>): BreakdownG
   return Array.from(map.entries())
     .map(([name, ts]) => ({ name, ...aggGroup(ts) }))
     .sort((a, b) => b.pnl - a.pnl)
+}
+
+const ORDER_TYPE_DISPLAY_ORDER = ["Market", "Limit", "Stop", "Other"] as const
+
+function byOrderType(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>): BreakdownGroup[] {
+  const map = new Map<string, Trade[]>()
+  for (const t of trades) {
+    const fills = fillsByTrade.get(t.id) ?? []
+    const entryFill = fills.find((f) => f.kind === "entry" && f.order_type) ?? fills.find((f) => f.kind === "entry")
+    const raw = entryFill?.order_type
+    if (!raw) continue
+    const lower = raw.toLowerCase()
+    const bucket = lower === "market" ? "Market"
+      : lower === "limit" ? "Limit"
+      : lower === "stop" ? "Stop"
+      : "Other"
+    const arr = map.get(bucket) ?? []
+    arr.push(t)
+    map.set(bucket, arr)
+  }
+  return ORDER_TYPE_DISPLAY_ORDER
+    .filter((k) => map.has(k))
+    .map((name) => ({ name, ...aggGroup(map.get(name)!) }))
+}
+
+function orderTypeNarrative(groups: BreakdownGroup[]): string | null {
+  // Need at least 2 buckets and ≥10pp spread on win-rate to be worth surfacing.
+  if (groups.length < 2) return null
+  const sorted = [...groups].sort((a, b) => b.winRate - a.winRate)
+  const best = sorted[0]
+  const worst = sorted[sorted.length - 1]
+  const delta = best.winRate - worst.winRate
+  if (delta < 10) return null
+  const note = best.name === "Limit" && worst.name === "Market" ? " Be patient." : ""
+  return `Your ${best.name.toLowerCase()} fills win ${Math.round(best.winRate)}% — your ${worst.name.toLowerCase()} fills win ${Math.round(worst.winRate)}%.${note}`
 }
 
 function aggGroup(ts: Trade[]) {
