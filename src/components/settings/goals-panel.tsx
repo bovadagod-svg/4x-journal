@@ -10,7 +10,7 @@ import {
   type GoalMetric,
   type GoalPeriod,
   type GoalRow,
-} from "@/lib/queries/goals"
+} from "@/lib/goals/metadata"
 import { SettingsSection, SettingsRow, inputStyle } from "./settings-primitives"
 
 const PERIODS: GoalPeriod[] = ["weekly", "monthly", "quarterly"]
