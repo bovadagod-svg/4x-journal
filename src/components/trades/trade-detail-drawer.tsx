@@ -186,7 +186,17 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                   refresh={refresh}
                 />
               )}
-              {tab === "lifecycle" && <LifecyclePanel events={(t.lifecycle_events ?? []) as unknown[]} pair={t.pair} />}
+              {tab === "lifecycle" && (
+                <LifecyclePanel
+                  events={(t.lifecycle_events ?? []) as unknown[]}
+                  pair={t.pair}
+                  side={t.side}
+                  entryPrice={Number(t.entry_price)}
+                  contractSize={Number(t.contract_size) || 1}
+                  openedAt={t.opened_at}
+                  closedAt={t.closed_at}
+                />
+              )}
               {tab === "replay" && <ReplayPanel tradeId={t.id} pair={t.pair} side={t.side} entryPrice={Number(t.entry_price)} exitPrice={t.exit_price != null ? Number(t.exit_price) : null} stopPrice={t.stop_price != null ? Number(t.stop_price) : null} targetPrice={t.target_price != null ? Number(t.target_price) : null} />}
               {tab === "actions" && (
                 <ActionsPanel
@@ -680,7 +690,46 @@ type LifecycleEvent = {
   takeProfit?: number | null
 }
 
-function LifecyclePanel({ events, pair }: { events: unknown[]; pair: string }) {
+type EnrichedEvent = LifecycleEvent & {
+  /** Realized P&L in dollars on this single fill (exit Filled events only). */
+  perFillPnl?: number
+  /** Where this exit fill landed relative to entry, in price units. */
+  perFillMove?: number
+  /** Slippage (filledPrice − price) when the order had a limit / stop trigger. */
+  slippage?: number
+  /** Signed change in SL from the previous SL value on this trade. */
+  slDelta?: number
+  /** Movement label for SL Replaced events. */
+  slClass?: "initial" | "be" | "trail" | "loose"
+  /** Signed change in TP. */
+  tpDelta?: number
+  tpClass?: "initial" | "wider" | "tighter"
+  /** "T+2d 7h" relative to the trade open. */
+  relTime?: string
+  /** Ms since trade open, for sorting / display. */
+  msFromOpen?: number
+}
+
+type TradeContext = {
+  pair: string
+  side: string
+  entryPrice: number
+  contractSize: number
+  openedAt: string | null
+  closedAt: string | null
+}
+
+function LifecyclePanel({
+  events, pair, side, entryPrice, contractSize, openedAt, closedAt,
+}: {
+  events: unknown[]
+  pair: string
+  side: string
+  entryPrice: number
+  contractSize: number
+  openedAt: string | null
+  closedAt: string | null
+}) {
   if (!Array.isArray(events) || events.length === 0) {
     return (
       <Section title="Lifecycle">
@@ -696,83 +745,264 @@ function LifecyclePanel({ events, pair }: { events: unknown[]; pair: string }) {
     )
   }
 
-  // Newest first reads more naturally for a single-trade view (entry at the
-  // bottom). Mirror what the user's broker UI shows in the screenshot.
-  const sorted = [...events as LifecycleEvent[]].sort(
-    (a, b) => new Date(b.occurredAt ?? 0).getTime() - new Date(a.occurredAt ?? 0).getTime(),
-  )
+  const ctx: TradeContext = { pair, side, entryPrice, contractSize, openedAt, closedAt }
+  const enriched = enrichEvents(events as LifecycleEvent[], ctx)
+  const summary = summarize(enriched, ctx)
+
+  // Newest first reads more naturally for a single-trade view (entry at the bottom).
+  const display = [...enriched].reverse()
 
   return (
-    <Section title={`Lifecycle (${sorted.length} events)`}>
+    <Section title={`Lifecycle (${enriched.length} events)`}>
+      <LifecycleSummary summary={summary} pair={pair} />
+
       <div style={{
+        marginTop: 12,
         display: "flex", flexDirection: "column",
         background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)",
         borderRadius: 8, overflow: "hidden",
       }}>
-        {/* Header */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "minmax(110px, 1fr) 90px 100px 70px 80px minmax(120px, 1fr)",
+          gridTemplateColumns: "minmax(110px, 130px) 60px 90px 110px 60px minmax(180px, 1fr)",
           gap: 10, padding: "8px 12px",
           fontSize: 10, color: "var(--c-fg-muted)",
           textTransform: "uppercase", letterSpacing: "0.05em",
           borderBottom: "1px solid var(--c-border)",
         }}>
           <span>Time</span>
+          <span style={{ textAlign: "right" }}>T+</span>
           <span>Status</span>
           <span>Type</span>
           <span style={{ textAlign: "right" }}>Lots</span>
-          <span style={{ textAlign: "right" }}>Side</span>
-          <span style={{ textAlign: "right" }}>Detail</span>
+          <span>Detail</span>
         </div>
-        {sorted.map((e, i) => (
-          <LifecycleRow key={`${e.orderId ?? i}-${e.status ?? i}-${e.occurredAt ?? i}`} event={e} pair={pair} last={i === sorted.length - 1} />
+        {display.map((e, i) => (
+          <LifecycleRow
+            key={`${e.orderId ?? i}-${e.status ?? i}-${e.occurredAt ?? i}-${i}`}
+            event={e}
+            ctx={ctx}
+            last={i === display.length - 1}
+          />
         ))}
       </div>
       <div style={{ marginTop: 8, fontSize: 11, color: "var(--c-fg-dim)", lineHeight: 1.5 }}>
-        Read top-down (newest first). Same view as your broker&apos;s order history,
-        scoped to this single position.
+        Read top-down (newest first). Per-leg P&amp;L is computed against the trade&apos;s
+        weighted-average entry price; SL / TP deltas show the change from the previous adjustment.
       </div>
     </Section>
   )
 }
 
-function LifecycleRow({ event, pair, last }: { event: LifecycleEvent; pair: string; last: boolean }) {
+// ── Enrichment + summary computation ──────────────────────────────────────
+
+type LifecycleSummaryData = {
+  duration: string | null
+  scaleOutCount: number
+  slMoveCount: number
+  tpMoveCount: number
+  finalSL: number | null
+  finalTP: number | null
+  realizedPnl: number
+  perLegBreakdown: Array<{ price: number; size: number; pnl: number; ts: string }>
+}
+
+function enrichEvents(events: LifecycleEvent[], ctx: TradeContext): EnrichedEvent[] {
+  // Walk chronologically (oldest → newest) so we can carry forward state.
+  const chrono = [...events].sort(
+    (a, b) => new Date(a.occurredAt ?? 0).getTime() - new Date(b.occurredAt ?? 0).getTime(),
+  )
+  const openedAtMs = ctx.openedAt ? new Date(ctx.openedAt).getTime() : null
+  const sideMul = ctx.side === "long" ? 1 : -1
+
+  let prevSL: number | null = null
+  let prevTP: number | null = null
+
+  return chrono.map((e): EnrichedEvent => {
+    const enriched: EnrichedEvent = { ...e }
+
+    // Relative time from trade open
+    if (e.occurredAt && openedAtMs != null) {
+      const ms = new Date(e.occurredAt).getTime() - openedAtMs
+      enriched.msFromOpen = ms
+      enriched.relTime = formatRelativeTime(ms)
+    }
+
+    const status = (e.status ?? "").toLowerCase()
+    const isFilled = status.includes("fill")
+    const isReplaced = status.includes("replac") || status.includes("modif")
+
+    // Per-fill realized P&L: only meaningful for exit Filled events with a
+    // numeric size + filled price.
+    if (isFilled && e.isOpen === false && e.filledPrice != null && e.size != null && e.size > 0) {
+      const sizeUnits = e.size * ctx.contractSize
+      enriched.perFillMove = (e.filledPrice - ctx.entryPrice) * sideMul
+      enriched.perFillPnl = Number((enriched.perFillMove * sizeUnits).toFixed(2))
+    }
+
+    // Slippage: fill price vs the order's intended price (limit/stop trigger).
+    // Skip when there's no requested price (pure market orders).
+    if (isFilled && e.filledPrice != null && e.price != null && e.price !== e.filledPrice) {
+      enriched.slippage = e.filledPrice - e.price
+    }
+
+    // SL / TP movement classification on Replaced events.
+    if (isReplaced) {
+      if (e.stopLoss != null && e.stopLoss !== prevSL) {
+        if (prevSL == null) {
+          enriched.slClass = "initial"
+        } else {
+          enriched.slDelta = e.stopLoss - prevSL
+          // BE: within 1 basis point of the entry price (handles both sides).
+          const beThreshold = Math.abs(ctx.entryPrice) * 0.0001
+          if (Math.abs(e.stopLoss - ctx.entryPrice) <= beThreshold) {
+            enriched.slClass = "be"
+          } else {
+            // For long: SL up = trail (favors). Short: SL down = trail.
+            const movedTowardProfit = ctx.side === "long" ? e.stopLoss > prevSL : e.stopLoss < prevSL
+            enriched.slClass = movedTowardProfit ? "trail" : "loose"
+          }
+        }
+        prevSL = e.stopLoss
+      }
+      if (e.takeProfit != null && e.takeProfit !== prevTP) {
+        if (prevTP == null) {
+          enriched.tpClass = "initial"
+        } else {
+          enriched.tpDelta = e.takeProfit - prevTP
+          // For long: TP up = wider (let it run). Short: TP down = wider.
+          const widened = ctx.side === "long" ? e.takeProfit > prevTP : e.takeProfit < prevTP
+          enriched.tpClass = widened ? "wider" : "tighter"
+        }
+        prevTP = e.takeProfit
+      }
+    } else if (e.stopLoss != null && prevSL == null) {
+      // First time we see a stop on any non-Replaced event (e.g. initial Placed).
+      prevSL = e.stopLoss
+    } else if (e.takeProfit != null && prevTP == null) {
+      prevTP = e.takeProfit
+    }
+
+    return enriched
+  })
+}
+
+function summarize(enriched: EnrichedEvent[], ctx: TradeContext): LifecycleSummaryData {
+  const opened = ctx.openedAt ? new Date(ctx.openedAt).getTime() : null
+  const closed = ctx.closedAt ? new Date(ctx.closedAt).getTime() : null
+  const duration = opened != null && closed != null
+    ? formatDuration(closed - opened)
+    : null
+
+  const exitFills = enriched.filter(
+    (e) => e.isOpen === false && /fill/i.test(e.status ?? "") && e.perFillPnl != null,
+  )
+  const realizedPnl = exitFills.reduce((s, e) => s + (e.perFillPnl ?? 0), 0)
+
+  const slMoves = enriched.filter((e) => e.slClass != null && e.slClass !== "initial")
+  const tpMoves = enriched.filter((e) => e.tpClass != null && e.tpClass !== "initial")
+
+  // Final SL/TP from the latest Replaced (or initial Placed if no Replaced).
+  let finalSL: number | null = null
+  let finalTP: number | null = null
+  for (const e of enriched) {
+    if (e.stopLoss != null) finalSL = e.stopLoss
+    if (e.takeProfit != null) finalTP = e.takeProfit
+  }
+
+  return {
+    duration,
+    scaleOutCount: Math.max(0, exitFills.length - 1),  // last close isn't a "scale-out"
+    slMoveCount: slMoves.length,
+    tpMoveCount: tpMoves.length,
+    finalSL,
+    finalTP,
+    realizedPnl,
+    perLegBreakdown: exitFills.map((e) => ({
+      price: e.filledPrice ?? 0,
+      size: e.size ?? 0,
+      pnl: e.perFillPnl ?? 0,
+      ts: e.occurredAt ?? "",
+    })),
+  }
+}
+
+function LifecycleSummary({ summary, pair }: { summary: LifecycleSummaryData; pair: string }) {
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+      gap: 8,
+    }}>
+      <Cell label="Duration" value={summary.duration ?? "—"} />
+      <Cell
+        label="Scale-outs"
+        value={summary.scaleOutCount > 0 ? String(summary.scaleOutCount) : "0"}
+        mono
+      />
+      <Cell
+        label="SL moves"
+        value={summary.slMoveCount > 0 ? `${summary.slMoveCount}` : "—"}
+        mono
+      />
+      <Cell
+        label="TP moves"
+        value={summary.tpMoveCount > 0 ? `${summary.tpMoveCount}` : "—"}
+        mono
+      />
+      <Cell
+        label="Final SL"
+        value={summary.finalSL != null ? fmtPrice(summary.finalSL, pair) : "—"}
+        mono
+      />
+      <Cell
+        label="Final TP"
+        value={summary.finalTP != null ? fmtPrice(summary.finalTP, pair) : "—"}
+        mono
+      />
+      {summary.perLegBreakdown.length > 0 && (
+        <Cell
+          label="Realized (legs sum)"
+          value={formatUSD(summary.realizedPnl, { signed: true })}
+          mono
+          badge={{
+            text: summary.perLegBreakdown.length === 1
+              ? "1 leg"
+              : `${summary.perLegBreakdown.length} legs`,
+            color: "var(--c-fg-muted)",
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function LifecycleRow({
+  event, ctx, last,
+}: {
+  event: EnrichedEvent
+  ctx: TradeContext
+  last: boolean
+}) {
   const status = (event.status ?? "").trim()
   const accent = statusAccent(status)
   const dt = event.occurredAt ? new Date(event.occurredAt) : null
-  const dateStr = dt ? dt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—"
-
-  // Detail column: surface the most important field for this event type.
-  let detail: React.ReactNode = "—"
-  if (/fill/i.test(status) && event.filledPrice != null) {
-    detail = <span className="mono">@ {fmtPrice(event.filledPrice, pair)}</span>
-  } else if (event.type === "StopLoss" && event.stopLoss != null) {
-    detail = <span className="mono">SL → {fmtPrice(event.stopLoss, pair)}</span>
-  } else if (event.type === "TakeProfit" && event.takeProfit != null) {
-    detail = <span className="mono">TP → {fmtPrice(event.takeProfit, pair)}</span>
-  } else if (event.price != null) {
-    detail = <span className="mono">@ {fmtPrice(event.price, pair)}</span>
-  } else if (event.stopLoss != null || event.takeProfit != null) {
-    const parts: string[] = []
-    if (event.stopLoss != null) parts.push(`SL ${fmtPrice(event.stopLoss, pair)}`)
-    if (event.takeProfit != null) parts.push(`TP ${fmtPrice(event.takeProfit, pair)}`)
-    detail = <span className="mono" style={{ fontSize: 11 }}>{parts.join(" · ")}</span>
-  }
-
-  const sideLabel = event.side ? event.side.toUpperCase() : "—"
-  const sideColor = /buy/i.test(event.side ?? "") ? "var(--c-green-bright)" : /sell/i.test(event.side ?? "") ? "var(--c-red-bright)" : "var(--c-fg-muted)"
+  const dateStr = dt
+    ? dt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : "—"
 
   return (
     <div style={{
       display: "grid",
-      gridTemplateColumns: "minmax(110px, 1fr) 90px 100px 70px 80px minmax(120px, 1fr)",
+      gridTemplateColumns: "minmax(110px, 130px) 60px 90px 110px 60px minmax(180px, 1fr)",
       gap: 10, padding: "10px 12px",
       borderBottom: last ? "none" : "1px solid var(--c-border)",
-      alignItems: "center", fontSize: 12,
+      alignItems: "flex-start", fontSize: 12,
     }}>
       <span className="mono" style={{ fontSize: 11, color: "var(--c-fg-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {dateStr}
+      </span>
+      <span className="mono" style={{ fontSize: 10.5, color: "var(--c-fg-dim)", textAlign: "right" }}>
+        {event.relTime ?? ""}
       </span>
       <span style={{
         fontSize: 10.5, fontWeight: 600,
@@ -792,16 +1022,230 @@ function LifecycleRow({ event, pair, last }: { event: LifecycleEvent; pair: stri
         )}
       </span>
       <span className="tnum" style={{ textAlign: "right", fontSize: 11.5 }}>
-        {event.size != null ? event.size.toFixed(2) : "—"}
+        {event.size != null && event.size > 0 ? event.size.toFixed(2) : "—"}
       </span>
-      <span style={{ textAlign: "right", fontSize: 10.5, color: sideColor, fontWeight: 600 }}>
-        {sideLabel}
-      </span>
-      <span style={{ textAlign: "right", color: "var(--c-fg-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {detail}
-      </span>
+      <LifecycleDetail event={event} ctx={ctx} />
     </div>
   )
+}
+
+/** Multi-line, event-aware detail cell. */
+function LifecycleDetail({ event, ctx }: { event: EnrichedEvent; ctx: TradeContext }) {
+  const status = (event.status ?? "").toLowerCase()
+  const isFilled = status.includes("fill")
+  const isPlaced = status.includes("placed")
+  const isTriggered = status.includes("trigger")
+  const isReplaced = status.includes("replac") || status.includes("modif")
+  const isCancelled = status.includes("cancel") || status.includes("reject")
+
+  const lines: React.ReactNode[] = []
+
+  // Filled OPEN: entry execution
+  if (isFilled && event.isOpen === true && event.filledPrice != null) {
+    lines.push(
+      <span key="fill-open" className="mono" style={primary}>
+        Entry filled @ {fmtPrice(event.filledPrice, ctx.pair)}
+      </span>,
+    )
+    if (event.slippage != null && Math.abs(event.slippage) > 0) {
+      const dirGood = (ctx.side === "long" ? event.slippage < 0 : event.slippage > 0)
+      lines.push(
+        <span key="fill-slip" style={{ ...secondary, color: dirGood ? "var(--c-green-bright)" : "var(--c-red-bright)" }}>
+          slippage {event.slippage >= 0 ? "+" : ""}{event.slippage.toFixed(5)} vs request
+        </span>,
+      )
+    }
+  }
+  // Filled CLOSE: scale-out / final close — show per-leg P&L
+  else if (isFilled && event.isOpen === false && event.filledPrice != null) {
+    lines.push(
+      <span key="fill-close" className="mono" style={primary}>
+        Closed {event.size != null ? event.size.toFixed(2) : "?"} lot{event.size === 1 ? "" : "s"} @ {fmtPrice(event.filledPrice, ctx.pair)}
+      </span>,
+    )
+    if (event.perFillPnl != null) {
+      const tone = event.perFillPnl >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"
+      lines.push(
+        <span key="fill-pnl" style={{ ...secondary, color: tone, fontWeight: 600 }}>
+          this leg: {formatUSD(event.perFillPnl, { signed: true })}
+        </span>,
+      )
+    }
+  }
+  // Replaced SL or TP: show old → new with classification
+  else if (isReplaced) {
+    if (event.slClass != null && event.stopLoss != null) {
+      lines.push(
+        <span key="sl-line" style={{ ...primary, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span className="mono">SL → {fmtPrice(event.stopLoss, ctx.pair)}</span>
+          {slClassBadge(event.slClass)}
+        </span>,
+      )
+      if (event.slDelta != null) {
+        lines.push(
+          <span key="sl-delta" style={secondary}>
+            {event.slDelta >= 0 ? "+" : ""}{event.slDelta.toFixed(5)} from prior
+          </span>,
+        )
+      }
+    } else if (event.tpClass != null && event.takeProfit != null) {
+      lines.push(
+        <span key="tp-line" style={{ ...primary, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span className="mono">TP → {fmtPrice(event.takeProfit, ctx.pair)}</span>
+          {tpClassBadge(event.tpClass)}
+        </span>,
+      )
+      if (event.tpDelta != null) {
+        lines.push(
+          <span key="tp-delta" style={secondary}>
+            {event.tpDelta >= 0 ? "+" : ""}{event.tpDelta.toFixed(5)} from prior
+          </span>,
+        )
+      }
+    } else if (event.price != null) {
+      lines.push(
+        <span key="price" className="mono" style={primary}>
+          @ {fmtPrice(event.price, ctx.pair)}
+        </span>,
+      )
+    }
+  }
+  // Triggered: order's trigger price reached
+  else if (isTriggered && event.price != null) {
+    lines.push(
+      <span key="trig" className="mono" style={primary}>
+        Triggered @ {fmtPrice(event.price, ctx.pair)}
+      </span>,
+    )
+    if (event.type === "StopLoss" || event.type === "Stop") {
+      lines.push(<span key="trig-tag" style={secondary}>stop hit</span>)
+    } else if (event.type === "TakeProfit") {
+      lines.push(<span key="trig-tag" style={secondary}>target reached</span>)
+    }
+  }
+  // Placed: usually the initial entry order
+  else if (isPlaced) {
+    if (event.price != null) {
+      lines.push(
+        <span key="placed" className="mono" style={primary}>
+          {event.isOpen ? "Entry order" : "Order"} @ {fmtPrice(event.price, ctx.pair)}
+        </span>,
+      )
+    } else {
+      lines.push(<span key="placed-mkt" style={primary}>Market order placed</span>)
+    }
+    if (event.stopLoss != null && event.takeProfit != null) {
+      lines.push(
+        <span key="placed-bracket" style={secondary}>
+          bracket SL {fmtPrice(event.stopLoss, ctx.pair)} · TP {fmtPrice(event.takeProfit, ctx.pair)}
+        </span>,
+      )
+    } else if (event.stopLoss != null) {
+      lines.push(<span key="placed-sl" style={secondary}>SL {fmtPrice(event.stopLoss, ctx.pair)}</span>)
+    } else if (event.takeProfit != null) {
+      lines.push(<span key="placed-tp" style={secondary}>TP {fmtPrice(event.takeProfit, ctx.pair)}</span>)
+    }
+  }
+  // Cancelled: usually OCO sibling
+  else if (isCancelled) {
+    if (event.type === "TakeProfit" || event.type === "StopLoss") {
+      lines.push(
+        <span key="cancel" style={primary}>
+          {event.type === "TakeProfit" ? "TP" : "SL"} cancelled
+        </span>,
+      )
+      lines.push(<span key="cancel-oco" style={secondary}>OCO sibling — opposite side hit</span>)
+    } else {
+      lines.push(<span key="cancel-other" style={primary}>Order cancelled</span>)
+    }
+  }
+  // Fallback
+  else {
+    if (event.price != null) {
+      lines.push(<span key="any-px" className="mono" style={primary}>@ {fmtPrice(event.price, ctx.pair)}</span>)
+    }
+    if (event.stopLoss != null) lines.push(<span key="any-sl" style={secondary}>SL {fmtPrice(event.stopLoss, ctx.pair)}</span>)
+    if (event.takeProfit != null) lines.push(<span key="any-tp" style={secondary}>TP {fmtPrice(event.takeProfit, ctx.pair)}</span>)
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      {lines.length > 0 ? lines : <span style={{ color: "var(--c-fg-dim)" }}>—</span>}
+    </div>
+  )
+}
+
+const primary: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--c-fg)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+}
+const secondary: React.CSSProperties = {
+  fontSize: 10.5,
+  color: "var(--c-fg-muted)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+}
+
+function slClassBadge(c: NonNullable<EnrichedEvent["slClass"]>): React.ReactNode {
+  const map: Record<typeof c, { label: string; color: string; bg: string }> = {
+    initial: { label: "initial", color: "var(--c-fg-muted)", bg: "var(--c-bg-elev-3)" },
+    be: { label: "BE", color: "var(--c-purple-bright)", bg: "rgba(105, 50, 212, 0.12)" },
+    trail: { label: "trail", color: "var(--c-green-bright)", bg: "rgba(17, 196, 88, 0.12)" },
+    loose: { label: "loosened", color: "var(--c-amber)", bg: "rgba(229, 162, 59, 0.12)" },
+  }
+  const m = map[c]
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+      color: m.color, background: m.bg, padding: "1px 6px", borderRadius: 999, border: `1px solid ${m.color}33`,
+    }}>{m.label}</span>
+  )
+}
+
+function tpClassBadge(c: NonNullable<EnrichedEvent["tpClass"]>): React.ReactNode {
+  const map: Record<typeof c, { label: string; color: string; bg: string }> = {
+    initial: { label: "initial", color: "var(--c-fg-muted)", bg: "var(--c-bg-elev-3)" },
+    wider: { label: "wider", color: "var(--c-green-bright)", bg: "rgba(17, 196, 88, 0.12)" },
+    tighter: { label: "tighter", color: "var(--c-amber)", bg: "rgba(229, 162, 59, 0.12)" },
+  }
+  const m = map[c]
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+      color: m.color, background: m.bg, padding: "1px 6px", borderRadius: 999, border: `1px solid ${m.color}33`,
+    }}>{m.label}</span>
+  )
+}
+
+function formatRelativeTime(ms: number): string {
+  if (ms < 0) return ""
+  const sec = Math.floor(ms / 1000)
+  if (sec < 60) return `${sec}s`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m`
+  const h = Math.floor(min / 60)
+  const remM = min % 60
+  if (h < 24) return remM > 0 ? `${h}h${remM}m` : `${h}h`
+  const d = Math.floor(h / 24)
+  const remH = h % 24
+  return remH > 0 ? `${d}d${remH}h` : `${d}d`
+}
+
+function formatDuration(ms: number): string {
+  const sec = Math.floor(ms / 1000)
+  if (sec < 60) return `${sec}s`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m`
+  const h = Math.floor(min / 60)
+  const remM = min % 60
+  if (h < 24) return remM > 0 ? `${h}h ${remM}m` : `${h}h`
+  const d = Math.floor(h / 24)
+  const remH = h % 24
+  return remH > 0 ? `${d}d ${remH}h` : `${d}d`
 }
 
 function statusAccent(status: string): { color: string; bg: string; border: string } {
