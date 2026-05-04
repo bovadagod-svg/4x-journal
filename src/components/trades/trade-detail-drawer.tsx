@@ -70,7 +70,14 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100 }} />
       <div style={{
         position: "fixed", top: 0, right: 0, bottom: 0,
-        width: 600, maxWidth: "94vw",
+        // Wide drawer that adapts:
+        //   • Outer min(94vw, …) clamps to viewport on phones so it never overflows
+        //   • Inner clamp(720, 65vw, 1100):
+        //       - at least 720px on tablets/laptops so the Order tab + Lifecycle
+        //         table don't get cramped
+        //       - 65% of viewport on regular desktops
+        //       - capped at 1100px on ultrawides so reading distance stays sane
+        width: "min(94vw, clamp(720px, 65vw, 1100px))",
         background: "var(--c-bg-elev-1)",
         borderLeft: "1px solid var(--c-border)",
         zIndex: 101, overflowY: "auto",
