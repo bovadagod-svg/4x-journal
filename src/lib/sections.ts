@@ -4,6 +4,7 @@ export type SectionId =
   | "dashboard" | "ledger" | "journal" | "analytics"
   | "calendar" | "playbooks" | "watchlist" | "backtest"
   | "risk" | "accounts" | "reports" | "settings"
+  | "goals"
 
 export const SECTION_META: Record<SectionId, { title: string; subtitle: string; icon: IconName }> = {
   dashboard: { title: "Dashboard", subtitle: "Your trading day at a glance", icon: "dashboard" },
@@ -18,6 +19,7 @@ export const SECTION_META: Record<SectionId, { title: string; subtitle: string; 
   accounts: { title: "Accounts", subtitle: "Connected brokers & prop firms", icon: "accounts" },
   reports: { title: "Reports", subtitle: "Export tax-ready P&L and prop-firm reports", icon: "reports" },
   settings: { title: "Settings", subtitle: "Preferences, integrations, billing", icon: "settings" },
+  goals: { title: "Goals", subtitle: "Weekly, monthly, quarterly targets — and where you stand right now", icon: "target" },
 }
 
 type NavItem =
@@ -31,6 +33,7 @@ export const NAV_ITEMS: NavItem[] = [
   { kind: "link", id: "journal", label: "Journal", icon: "edit", indent: true },
   { kind: "section", label: "Insight" },
   { kind: "link", id: "analytics", label: "Analytics", icon: "analytics" },
+  { kind: "link", id: "goals", label: "Goals", icon: "target" },
   { kind: "link", id: "playbooks", label: "Playbooks", icon: "playbook" },
   { kind: "link", id: "calendar", label: "Calendar", icon: "calendar" },
   { kind: "link", id: "watchlist", label: "Watchlist", icon: "watchlist" },

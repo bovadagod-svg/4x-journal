@@ -15,11 +15,13 @@ import { BehaviorPanel } from "@/components/settings/behavior-panel"
 import { IntegrationsPanel } from "@/components/settings/integrations-panel"
 import { DataPanel } from "@/components/settings/data-panel"
 import { FxRatesPanel } from "@/components/settings/fx-rates-panel"
+import { GoalsPanel } from "@/components/settings/goals-panel"
 import { parseFxRates } from "@/lib/money"
+import { getUserGoals } from "@/lib/queries/goals"
 
 const VALID_TABS: SettingsTabId[] = [
   "profile", "appearance", "notifications", "trading", "behavior",
-  "journal", "tax", "fx_rates", "integrations", "data",
+  "journal", "goals", "tax", "fx_rates", "integrations", "data",
 ]
 
 export default async function SettingsPage({
@@ -37,13 +39,14 @@ export default async function SettingsPage({
     ? (params.tab as SettingsTabId)
     : "profile"
 
-  const [{ data: settings }, playbooks] = await Promise.all([
+  const [{ data: settings }, playbooks, goals] = await Promise.all([
     supabase
       .from("user_settings")
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle(),
     getUserPlaybooks(),
+    getUserGoals(),
   ])
 
   // Defaults if no row yet (lazy-initialized on first save).
@@ -111,6 +114,7 @@ export default async function SettingsPage({
         }}
       />
     ),
+    goals: <GoalsPanel initial={goals} />,
     journal: (
       <JournalPanel
         initial={{

@@ -10,6 +10,7 @@ export type SettingsTabId =
   | "trading"
   | "behavior"
   | "journal"
+  | "goals"
   | "tax"
   | "fx_rates"
   | "integrations"
@@ -37,6 +38,7 @@ const NAV: Item[] = [
   { id: "trading", label: "Trading defaults", icon: "target" },
   { id: "behavior", label: "Behavior rules", icon: "flame" },
   { id: "journal", label: "Journal defaults", icon: "journal" },
+  { id: "goals", label: "Goals", icon: "target", hint: "Weekly / monthly / quarterly targets" },
   { id: "risk", label: "Risk rules", icon: "risk", external: "/risk", hint: "Per-account caps + pre-flight" },
   { group: "Connections" },
   { id: "brokers", label: "Brokers & accounts", icon: "accounts", external: "/accounts", hint: "Connect TradeLocker · CSV import" },
