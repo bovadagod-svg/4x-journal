@@ -1327,16 +1327,38 @@ function ReplayPanel({
         targetPrice={targetPrice}
         side={side}
       />
-      <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", marginTop: 6 }}>
-        {state.bars.length} bars · {state.ticker} · {state.timeframe} · entry/exit/stop/target marked
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginTop: 8,
+        fontSize: 10.5,
+        color: "var(--c-fg-dim)",
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}>
+        <span>{state.ticker.replace(/^[A-Z]:/, "")} · {state.timeframe}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--c-purple-bright)" }} />
+            Entry
+          </span>
+          {state.exitTs != null && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--c-fg-muted)" }} />
+              Exit
+            </span>
+          )}
+        </span>
       </div>
     </Section>
   )
 }
 
-// Pure SVG candle chart — no chart library dep.
+// Pure SVG candle chart — minimal, premium look. No price labels, no axes,
+// no stop/target lines. Just the candles and faint entry/exit dots.
 function CandleChart({
-  bars, entryTs, exitTs, entryPrice, exitPrice, stopPrice, targetPrice, side,
+  bars, entryTs, exitTs, entryPrice, exitPrice, side,
 }: {
   bars: Aggregate[]
   entryTs: number
@@ -1355,72 +1377,158 @@ function CandleChart({
     )
   }
 
+  // Trim to a clean number of candles centered around entry/exit so it
+  // reads as "a few candles" rather than a noisy 500-bar wall.
+  const MAX_BARS = 60
+  let visible = bars
+  if (bars.length > MAX_BARS) {
+    let entryIdx = 0
+    let bestDelta = Infinity
+    for (let i = 0; i < bars.length; i++) {
+      const d = Math.abs(bars[i].ts - entryTs)
+      if (d < bestDelta) { entryIdx = i; bestDelta = d }
+    }
+    let center = entryIdx
+    if (exitTs != null) {
+      let exitIdx = 0
+      let bestExit = Infinity
+      for (let i = 0; i < bars.length; i++) {
+        const d = Math.abs(bars[i].ts - exitTs)
+        if (d < bestExit) { exitIdx = i; bestExit = d }
+      }
+      center = Math.round((entryIdx + exitIdx) / 2)
+    }
+    const half = Math.floor(MAX_BARS / 2)
+    let start = Math.max(0, center - half)
+    const end = Math.min(bars.length, start + MAX_BARS)
+    start = Math.max(0, end - MAX_BARS)
+    visible = bars.slice(start, end)
+  }
+
   const W = 540
-  const H = 240
-  const padX = 6
-  const padY = 12
-  const hi = Math.max(...bars.map((b) => b.high), entryPrice, exitPrice ?? -Infinity, stopPrice ?? -Infinity, targetPrice ?? -Infinity)
-  const lo = Math.min(...bars.map((b) => b.low),  entryPrice, exitPrice ??  Infinity, stopPrice ??  Infinity, targetPrice ??  Infinity)
+  const H = 220
+  const padX = 14
+  const padY = 18
+
+  // Range driven by visible candles only — keeps the chart tight even when
+  // entry/stop/target sit far outside the recent action.
+  const hiBars = Math.max(...visible.map((b) => b.high))
+  const loBars = Math.min(...visible.map((b) => b.low))
+  const rangeBars = hiBars - loBars || 1
+  // Add small headroom so candles never kiss the top/bottom edges.
+  const hi = hiBars + rangeBars * 0.08
+  const lo = loBars - rangeBars * 0.08
   const range = hi - lo || 1
-  const stepX = (W - padX * 2) / bars.length
+  const stepX = (W - padX * 2) / visible.length
   const xFor = (i: number) => padX + i * stepX + stepX / 2
   const yFor = (v: number) => H - padY - ((v - lo) / range) * (H - padY * 2)
 
   const tsToIdx = (ts: number): number => {
     let best = 0
     let bestDelta = Infinity
-    for (let i = 0; i < bars.length; i++) {
-      const d = Math.abs(bars[i].ts - ts)
+    for (let i = 0; i < visible.length; i++) {
+      const d = Math.abs(visible[i].ts - ts)
       if (d < bestDelta) { best = i; bestDelta = d }
     }
     return best
   }
 
+  // Only render a marker if its price actually falls within the visible range —
+  // off-chart dots are visual noise.
+  const inRange = (v: number) => v >= lo && v <= hi
   const entryX = xFor(tsToIdx(entryTs))
   const exitX = exitTs != null ? xFor(tsToIdx(exitTs)) : null
-  const candleWidth = Math.max(1, stepX * 0.7)
+  const candleWidth = Math.max(1.5, stepX * 0.55)
+  const wickWidth = Math.max(0.75, candleWidth * 0.18)
+
+  const exitColor = exitPrice != null && (
+    (side === "long" && exitPrice >= entryPrice) ||
+    (side === "short" && exitPrice <= entryPrice)
+  ) ? "var(--c-green-bright)" : "var(--c-red-bright)"
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ background: "var(--c-bg-elev-2)", borderRadius: 8, border: "1px solid var(--c-border)" }}>
-      {/* Stop / target / entry horizontal reference lines */}
-      {stopPrice != null && (
-        <line x1={padX} x2={W - padX} y1={yFor(stopPrice)} y2={yFor(stopPrice)} stroke="var(--c-red-bright)" strokeDasharray="3 3" strokeWidth={1} />
-      )}
-      {targetPrice != null && (
-        <line x1={padX} x2={W - padX} y1={yFor(targetPrice)} y2={yFor(targetPrice)} stroke="var(--c-green-bright)" strokeDasharray="3 3" strokeWidth={1} />
-      )}
-      <line x1={padX} x2={W - padX} y1={yFor(entryPrice)} y2={yFor(entryPrice)} stroke="var(--c-purple-bright)" strokeDasharray="2 4" strokeWidth={1} />
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      height={H}
+      preserveAspectRatio="none"
+      style={{
+        borderRadius: 12,
+        border: "1px solid var(--c-border)",
+        background: "linear-gradient(180deg, var(--c-bg-elev-2) 0%, var(--c-bg-elev-1) 100%)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)",
+        display: "block",
+      }}
+    >
+      <defs>
+        <linearGradient id="upBody" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--c-green-bright)" stopOpacity="1" />
+          <stop offset="100%" stopColor="var(--c-green-bright)" stopOpacity="0.78" />
+        </linearGradient>
+        <linearGradient id="downBody" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--c-red-bright)" stopOpacity="0.78" />
+          <stop offset="100%" stopColor="var(--c-red-bright)" stopOpacity="1" />
+        </linearGradient>
+        <radialGradient id="entryGlow">
+          <stop offset="0%" stopColor="var(--c-purple-bright)" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="var(--c-purple-bright)" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="exitGlow">
+          <stop offset="0%" stopColor={exitColor} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={exitColor} stopOpacity="0" />
+        </radialGradient>
+      </defs>
 
       {/* Candles */}
-      {bars.map((b, i) => {
+      {visible.map((b, i) => {
         const x = xFor(i)
         const up = b.close >= b.open
-        const color = up ? "var(--c-green-bright)" : "var(--c-red-bright)"
+        const stroke = up ? "var(--c-green-bright)" : "var(--c-red-bright)"
+        const fill = up ? "url(#upBody)" : "url(#downBody)"
+        const yTop = yFor(Math.max(b.open, b.close))
+        const yBot = yFor(Math.min(b.open, b.close))
+        const bodyH = Math.max(1, yBot - yTop)
         return (
           <g key={i}>
-            <line x1={x} x2={x} y1={yFor(b.high)} y2={yFor(b.low)} stroke={color} strokeWidth={1} />
+            <rect
+              x={x - wickWidth / 2}
+              y={yFor(b.high)}
+              width={wickWidth}
+              height={Math.max(1, yFor(b.low) - yFor(b.high))}
+              fill={stroke}
+              opacity={0.85}
+              rx={wickWidth / 2}
+            />
             <rect
               x={x - candleWidth / 2}
-              y={yFor(Math.max(b.open, b.close))}
+              y={yTop}
               width={candleWidth}
-              height={Math.max(1, Math.abs(yFor(b.open) - yFor(b.close)))}
-              fill={color}
+              height={bodyH}
+              fill={fill}
+              rx={Math.min(1.5, candleWidth / 4)}
             />
           </g>
         )
       })}
 
-      {/* Entry marker */}
-      <line x1={entryX} x2={entryX} y1={padY} y2={H - padY} stroke="var(--c-purple-bright)" strokeWidth={1} strokeDasharray="2 3" opacity={0.5} />
-      <circle cx={entryX} cy={yFor(entryPrice)} r={4} fill="var(--c-purple-bright)" />
+      {/* Entry marker — soft glow + dot, no axis-spanning line */}
+      {inRange(entryPrice) && (
+        <g>
+          <circle cx={entryX} cy={yFor(entryPrice)} r={10} fill="url(#entryGlow)" />
+          <circle cx={entryX} cy={yFor(entryPrice)} r={3} fill="var(--c-purple-bright)" />
+          <circle cx={entryX} cy={yFor(entryPrice)} r={3} fill="none" stroke="var(--c-bg-elev-1)" strokeWidth={0.75} />
+        </g>
+      )}
 
       {/* Exit marker */}
-      {exitX != null && exitPrice != null && (
-        <>
-          <line x1={exitX} x2={exitX} y1={padY} y2={H - padY} stroke={side === "long" && exitPrice >= entryPrice ? "var(--c-green-bright)" : "var(--c-red-bright)"} strokeWidth={1} strokeDasharray="2 3" opacity={0.5} />
-          <circle cx={exitX} cy={yFor(exitPrice)} r={4} fill={side === "long" && exitPrice >= entryPrice ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
-        </>
+      {exitX != null && exitPrice != null && inRange(exitPrice) && (
+        <g>
+          <circle cx={exitX} cy={yFor(exitPrice)} r={10} fill="url(#exitGlow)" />
+          <circle cx={exitX} cy={yFor(exitPrice)} r={3} fill={exitColor} />
+          <circle cx={exitX} cy={yFor(exitPrice)} r={3} fill="none" stroke="var(--c-bg-elev-1)" strokeWidth={0.75} />
+        </g>
       )}
+
     </svg>
   )
 }

@@ -66,14 +66,18 @@ export async function getReplayCandles(args: {
 
   const entryMs = new Date(trade.opened_at).getTime()
   const exitMs = trade.closed_at ? new Date(trade.closed_at).getTime() : Date.now()
-  const span = exitMs - entryMs
+  if (!Number.isFinite(entryMs) || !Number.isFinite(exitMs)) {
+    return { ok: false, error: "Trade has unparseable opened_at/closed_at timestamp.", configured: true }
+  }
+  const span = Math.max(0, exitMs - entryMs)
 
   // Pad the window: 25% of the trade's lifetime on each side, with sensible min/max.
   const minPad = cfg.timespan === "day" ? 7 * 86_400_000 : 4 * 3_600_000
   const maxPad = 30 * 86_400_000
   const pad = Math.max(minPad, Math.min(maxPad, span * 0.25))
-  const from = entryMs - pad
-  const to = exitMs + pad
+  // Polygon's path params reject non-integer ms; floor to be safe.
+  const from = Math.floor(entryMs - pad)
+  const to = Math.floor(exitMs + pad)
 
   const r = await getAggregates({
     ticker,
