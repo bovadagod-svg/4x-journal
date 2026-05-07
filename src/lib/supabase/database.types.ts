@@ -157,6 +157,33 @@ export type Database = {
           },
         ]
       }
+      coach_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          messages: Json
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          messages?: Json
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          messages?: Json
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       economic_events: {
         Row: {
           actual: string | null
@@ -892,6 +919,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_trade_rules: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          kind: string
+          payload: Json
+          reason: string | null
+          severity: string
+          source: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind: string
+          payload: Json
+          reason?: string | null
+          severity?: string
+          source?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind?: string
+          payload?: Json
+          reason?: string | null
+          severity?: string
+          source?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       watchlist_pairs: {
         Row: {

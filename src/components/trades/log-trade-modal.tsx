@@ -161,6 +161,25 @@ export function LogTradeModal({
             }
           }
 
+          // #72 Trade rules: soft confirm when the proposed trade matches any
+          // enabled block_pair_side rule. Pending orders also checked — the rule
+          // is about WHAT you're trading, not when it fills.
+          if (defaults.trade_rules.length > 0) {
+            const matched = defaults.trade_rules.filter(
+              (r) => r.pair.toUpperCase() === pair.toUpperCase() && r.side === side,
+            )
+            if (matched.length > 0) {
+              const lines = matched.map((r) => `• No ${r.side} on ${r.pair}${r.reason ? ` — ${r.reason}` : ""}`).join("\n")
+              const ok = window.confirm(
+                `This trade matches one of your active rules:\n\n${lines}\n\nSubmit anyway?`,
+              )
+              if (!ok) {
+                e.preventDefault()
+                return
+              }
+            }
+          }
+
           // confirm_above_pct: warn before submit when risk_amount as % of equity
           // exceeds the user's threshold. Pending orders skip this — no risk yet.
           if (status === "pending") return

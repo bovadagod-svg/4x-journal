@@ -50,6 +50,11 @@ export type TradeDefaults = {
     enabled: boolean
     events: NewsAvoidanceEvent[]
   }
+  /**
+   * #72 Active block_pair_side rules — checked client-side at submit. Each
+   * fires a soft confirm() the user can override.
+   */
+  trade_rules: Array<{ pair: string; side: "long" | "short"; reason: string | null }>
 }
 
 const LogTradeContext = createContext<Ctx | null>(null)

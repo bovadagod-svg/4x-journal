@@ -72,6 +72,21 @@ export default async function DashboardLayout({
   const requireJournalScreenshot = row?.require_journal_screenshot ?? false
   const requireJournalMood = row?.require_journal_mood ?? false
 
+  // #72 Active block_pair_side rules — checked client-side at submit by Log
+  // Trade modal. Direct query against user_trade_rules (no helper yet).
+  const { data: ruleRows } = await supabase
+    .from("user_trade_rules")
+    .select("kind, payload, reason, enabled")
+    .eq("user_id", user.id)
+    .eq("enabled", true)
+  const tradeRules: TradeDefaults["trade_rules"] = []
+  for (const r of ruleRows ?? []) {
+    if (r.kind !== "block_pair_side") continue
+    const p = (r.payload as { pair?: string; side?: string }) ?? {}
+    if (typeof p.pair !== "string" || (p.side !== "long" && p.side !== "short")) continue
+    tradeRules.push({ pair: p.pair.toUpperCase(), side: p.side, reason: r.reason })
+  }
+
   const tradeDefaults: TradeDefaults = {
     sizing_method: (row?.sizing_method as TradeDefaults["sizing_method"]) ?? "fixed-risk",
     default_risk_pct: Number(row?.default_risk_pct ?? 0.5),
@@ -86,6 +101,7 @@ export default async function DashboardLayout({
       enabled: newsContext.enabled,
       events: newsContext.events,
     },
+    trade_rules: tradeRules,
   }
 
   const pnlDisplay = (row?.pnl_display as PnLDisplayMode | undefined) ?? "money"

@@ -28,6 +28,7 @@ import { TodayPlanCard } from "@/components/dashboard/today-plan-card"
 import { WeeklyRetrospectiveCard } from "@/components/dashboard/weekly-retrospective-card"
 import { PropPhaseCard } from "@/components/dashboard/prop-phase-card"
 import { CustomizeWidgetsButton } from "@/components/dashboard/customize-widgets-button"
+import { CoachChatTrigger } from "@/components/dashboard/coach-chat-trigger"
 import { parseDashboardLayout, isWidgetVisible } from "@/lib/dashboard-layout"
 import { createClient } from "@/lib/supabase/server"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
@@ -159,6 +160,8 @@ export default async function DashboardPage({
           {v("calendar-card") && <CalendarCard events={events} />}
         </div>
       )}
+
+      <CoachChatTrigger />
     </>
   )
 }

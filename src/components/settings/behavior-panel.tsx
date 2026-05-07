@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Icon } from "@/components/icons"
 import { updateBehavior, type SettingsFormState } from "@/lib/actions/settings"
 import { SettingsSection, SettingsRow, Toggle, NumberSlider, SaveBar, useDirty } from "./settings-primitives"
+import { TradeRulesPanel } from "./trade-rules-panel"
 
 export type BehaviorState = {
   news_avoidance_enabled: boolean
@@ -83,6 +84,12 @@ export function BehaviorPanel({ initial }: { initial: BehaviorState }) {
         >
           <Toggle name="coach_auto_tag" checked={tracker.current.coach_auto_tag} onChange={(v) => set("coach_auto_tag", v)} />
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection icon="flag" title="Trade rules" subtitle="Hard rules the Log Trade modal checks before submit">
+        <div style={{ padding: "4px 16px 16px" }}>
+          <TradeRulesPanel />
+        </div>
       </SettingsSection>
 
       <div className="card" style={{ padding: 14, background: "rgba(105, 50, 212, 0.06)", border: "1px solid rgba(105, 50, 212, 0.2)", display: "flex", gap: 12, alignItems: "flex-start", fontSize: 12, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
