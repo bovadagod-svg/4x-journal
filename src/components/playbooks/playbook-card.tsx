@@ -68,6 +68,14 @@ export function PlaybookCard({ playbook, recentTrades }: { playbook: Playbook & 
           <KV label="Win %" value={playbook.stats.winRate != null ? `${playbook.stats.winRate}%` : "—"} />
           <KV label="Exp." value={playbook.stats.expectancy != null ? `${playbook.stats.expectancy > 0 ? "+" : ""}${playbook.stats.expectancy}R` : "—"} color={isPositive ? "var(--c-green-bright)" : "var(--c-fg-muted)"} />
           <KV label="PF" value={pf(playbook.stats)} color="var(--c-purple-bright)" />
+          <KV
+            label="Max DD"
+            value={playbook.stats.closedTrades >= 3 && playbook.stats.maxDrawdown > 0
+              ? formatUSD(-playbook.stats.maxDrawdown)
+              : "—"}
+            color={playbook.stats.maxDrawdown > 0 ? "var(--c-amber)" : "var(--c-fg-muted)"}
+            sub={playbook.stats.maxDrawdownR > 0 ? `−${playbook.stats.maxDrawdownR.toFixed(2)}R` : undefined}
+          />
         </div>
 
         <div>
@@ -99,11 +107,12 @@ export function PlaybookCard({ playbook, recentTrades }: { playbook: Playbook & 
   )
 }
 
-function KV({ label, value, color }: { label: string; value: string; color?: string }) {
+function KV({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
     <div>
       <div style={{ fontSize: 9.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
       <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: color ?? "var(--c-fg)" }}>{value}</div>
+      {sub && <div className="tnum" style={{ fontSize: 9.5, color: "var(--c-fg-dim)" }}>{sub}</div>}
     </div>
   )
 }

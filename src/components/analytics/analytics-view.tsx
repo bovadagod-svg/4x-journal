@@ -18,6 +18,12 @@ import { ScaleOutAnalysis } from "./scale-out-analysis"
 import { StopModifyBehavior } from "./stop-modify-behavior"
 import { SlippageAnalysis } from "./slippage-analysis"
 import { FeeBleed } from "./fee-bleed"
+import { EdgeErosion } from "./edge-erosion"
+import { StreakAwarePerf } from "./streak-aware-perf"
+import { TimeToResolution } from "./time-to-resolution"
+import { UnderwaterCurve } from "./underwater-curve"
+import { RiskAdjustedMetrics } from "./risk-adjusted-metrics"
+import { RevengeDetector } from "./revenge-detector"
 import { RiskOfRuinCard } from "./risk-of-ruin-card"
 import { MonteCarloCard } from "./monte-carlo-card"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
@@ -58,6 +64,9 @@ export function AnalyticsView({
       {/* Cumulative curve */}
       <CumulativeCurve values={filtered.length >= 2 ? cumulate(filtered) : []} />
 
+      {/* Edge erosion — rolling-window WR + expectancy lines */}
+      <EdgeErosion trades={filtered} />
+
       {/* Coach insights */}
       <CoachInsights trades={filtered} entriesByTrade={entriesByTrade} playbookMap={playbookMap} />
 
@@ -76,11 +85,26 @@ export function AnalyticsView({
         <MoodAnalysis trades={filtered} />
       </div>
 
+      {/* Time-to-resolution distribution — winners vs losers */}
+      <TimeToResolution trades={filtered} />
+
+      {/* Streak-aware perf + Revenge detector — both behavioral, both off chronological data */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
+        <StreakAwarePerf trades={filtered} />
+        <RevengeDetector trades={filtered} />
+      </div>
+
       {/* Risk sizing + Drawdown */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
         <RiskSizingAnalysis trades={filtered} />
         <DrawdownAnalysis trades={filtered} />
       </div>
+
+      {/* Underwater curve — % below peak through time */}
+      <UnderwaterCurve trades={filtered} />
+
+      {/* Risk-adjusted ratios */}
+      <RiskAdjustedMetrics trades={filtered} />
 
       {/* Risk-of-Ruin + Forward equity simulation — paired math cards.
           Both Monte Carlo, both derived from the same closed-trade stats. */}

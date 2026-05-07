@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
 
@@ -37,6 +37,7 @@ function inSession(hourUTC: number, s: SessionDef): boolean {
 }
 
 export function SessionAnalysis({ trades }: { trades: Trade[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
   const stats = useMemo(() => compute(trades), [trades])
   if (stats.eligible === 0) return null
   const best = [...stats.rows].filter((r) => r.count >= 3).sort((a, b) => b.expectancy - a.expectancy)[0]
@@ -69,48 +70,59 @@ export function SessionAnalysis({ trades }: { trades: Trade[] }) {
         </div>
         {stats.rows.map((r) => {
           const isBest = best && r.id === best.id
+          const isExpanded = expanded === r.id
+          const sessionHours = sessionHoursFor(r.id, stats.hourly)
           return (
-            <div
-              key={r.id}
-              style={{
-                display: "grid", gridTemplateColumns: "140px 60px 1fr 80px 80px",
-                gap: 8, padding: "8px 0",
-                borderBottom: "1px solid var(--c-border)",
-                alignItems: "center", fontSize: 12.5,
-                background: isBest ? "rgba(17, 196, 88, 0.04)" : "transparent",
-              }}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color }} />
-                <span style={{ fontWeight: 500 }}>{r.label}</span>
-                <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>
-                  {String(r.startHour).padStart(2, "0")}–{String(r.endHour).padStart(2, "0")}
+            <div key={r.id}>
+              <div
+                onClick={() => r.count >= 3 && setExpanded(isExpanded ? null : r.id)}
+                style={{
+                  display: "grid", gridTemplateColumns: "140px 60px 1fr 80px 80px 18px",
+                  gap: 8, padding: "8px 0",
+                  borderBottom: "1px solid var(--c-border)",
+                  alignItems: "center", fontSize: 12.5,
+                  background: isBest ? "rgba(17, 196, 88, 0.04)" : "transparent",
+                  cursor: r.count >= 3 ? "pointer" : "default",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color }} />
+                  <span style={{ fontWeight: 500 }}>{r.label}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>
+                    {String(r.startHour).padStart(2, "0")}–{String(r.endHour).padStart(2, "0")}
+                  </span>
                 </span>
-              </span>
-              <span className="tnum" style={{ textAlign: "right", color: "var(--c-fg-muted)" }}>{r.count}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ position: "relative", flex: 1, height: 8, background: "var(--c-bg-elev-3)", borderRadius: 4, overflow: "hidden" }}>
-                  <div style={{
-                    position: "absolute", inset: 0, width: `${r.winRate}%`,
-                    background: r.winRate >= 50 ? "rgba(17, 196, 88, 0.6)" : "rgba(190, 51, 61, 0.6)",
-                  }} />
+                <span className="tnum" style={{ textAlign: "right", color: "var(--c-fg-muted)" }}>{r.count}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ position: "relative", flex: 1, height: 8, background: "var(--c-bg-elev-3)", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{
+                      position: "absolute", inset: 0, width: `${r.winRate}%`,
+                      background: r.winRate >= 50 ? "rgba(17, 196, 88, 0.6)" : "rgba(190, 51, 61, 0.6)",
+                    }} />
+                  </div>
+                  <span className="tnum" style={{ fontSize: 11.5, fontWeight: 600, minWidth: 36, textAlign: "right" }}>
+                    {r.count === 0 ? "—" : `${Math.round(r.winRate)}%`}
+                  </span>
                 </div>
-                <span className="tnum" style={{ fontSize: 11.5, fontWeight: 600, minWidth: 36, textAlign: "right" }}>
-                  {r.count === 0 ? "—" : `${Math.round(r.winRate)}%`}
+                <span className="tnum" style={{
+                  textAlign: "right",
+                  color: r.avgR > 0 ? "var(--c-green-bright)" : r.avgR < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)",
+                }}>
+                  {r.count === 0 ? "—" : `${r.avgR > 0 ? "+" : ""}${r.avgR.toFixed(2)}R`}
+                </span>
+                <span className="tnum" style={{
+                  textAlign: "right", fontWeight: 600,
+                  color: r.avgPnL > 0 ? "var(--c-green-bright)" : r.avgPnL < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)",
+                }}>
+                  {r.count === 0 ? "—" : formatUSD(r.avgPnL, { signed: true })}
+                </span>
+                <span style={{ textAlign: "center", color: "var(--c-fg-dim)", fontSize: 10 }}>
+                  {r.count >= 3 ? (isExpanded ? "▾" : "▸") : ""}
                 </span>
               </div>
-              <span className="tnum" style={{
-                textAlign: "right",
-                color: r.avgR > 0 ? "var(--c-green-bright)" : r.avgR < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)",
-              }}>
-                {r.count === 0 ? "—" : `${r.avgR > 0 ? "+" : ""}${r.avgR.toFixed(2)}R`}
-              </span>
-              <span className="tnum" style={{
-                textAlign: "right", fontWeight: 600,
-                color: r.avgPnL > 0 ? "var(--c-green-bright)" : r.avgPnL < 0 ? "var(--c-red-bright)" : "var(--c-fg-muted)",
-              }}>
-                {r.count === 0 ? "—" : formatUSD(r.avgPnL, { signed: true })}
-              </span>
+              {isExpanded && sessionHours.length > 0 && (
+                <IntraSessionDetail hours={sessionHours} />
+              )}
             </div>
           )
         })}
@@ -126,6 +138,74 @@ export function SessionAnalysis({ trades }: { trades: Trade[] }) {
       )}
     </div>
   )
+}
+
+function IntraSessionDetail({ hours }: { hours: { hour: number; count: number; pnl: number; winRate: number }[] }) {
+  const populated = hours.filter((h) => h.count > 0).sort((a, b) => b.pnl - a.pnl)
+  if (populated.length === 0) return null
+  const best = populated[0]
+  const worst = populated[populated.length - 1]
+  const sortedByHour = [...hours].sort((a, b) => a.hour - b.hour)
+  const maxAbs = Math.max(...sortedByHour.map((h) => Math.abs(h.pnl)), 1)
+
+  return (
+    <div style={{
+      padding: "12px 16px 14px",
+      background: "var(--c-bg-elev-2)",
+      borderBottom: "1px solid var(--c-border)",
+    }}>
+      <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+        Hour-by-hour P&amp;L within session
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 60 }}>
+        {sortedByHour.map((h) => {
+          const pct = (Math.abs(h.pnl) / maxAbs) * 100
+          return (
+            <div
+              key={h.hour}
+              title={h.count > 0
+                ? `${String(h.hour).padStart(2, "0")}:00 UTC · ${h.count} trade${h.count === 1 ? "" : "s"} · ${Math.round(h.winRate)}% WR · ${formatUSD(h.pnl, { signed: true })}`
+                : `${String(h.hour).padStart(2, "0")}:00 UTC · 0 trades`}
+              style={{
+                flex: 1,
+                display: "flex", flexDirection: "column", justifyContent: "flex-end",
+                height: "100%",
+              }}
+            >
+              <div style={{
+                width: "100%",
+                height: `${pct}%`,
+                minHeight: h.count > 0 ? 2 : 0,
+                background: h.count === 0 ? "var(--c-bg-elev-3)"
+                  : h.pnl >= 0 ? "rgba(17, 196, 88, 0.7)" : "rgba(190, 51, 61, 0.7)",
+                borderRadius: "2px 2px 0 0",
+              }} />
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ display: "flex", marginTop: 4, gap: 3 }}>
+        {sortedByHour.map((h) => (
+          <span key={h.hour} style={{ flex: 1, fontSize: 9, textAlign: "center", color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>
+            {String(h.hour).padStart(2, "0")}
+          </span>
+        ))}
+      </div>
+      {populated.length >= 2 && best.hour !== worst.hour && best.pnl > 0 && (
+        <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>
+          Best hour: <strong style={{ color: "var(--c-green-bright)" }}>{String(best.hour).padStart(2, "0")}:00</strong> ({formatUSD(best.pnl, { signed: true })} across {best.count} trade{best.count === 1 ? "" : "s"}){worst.pnl < 0 && (
+            <> · Worst hour: <strong style={{ color: "var(--c-red-bright)" }}>{String(worst.hour).padStart(2, "0")}:00</strong> ({formatUSD(worst.pnl, { signed: true })} across {worst.count})</>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function sessionHoursFor(sessionId: string, hourly: { hour: number; count: number; pnl: number; winRate: number }[]) {
+  const session = SESSIONS.find((s) => s.id === sessionId)
+  if (!session) return []
+  return hourly.filter((h) => inSession(h.hour, session))
 }
 
 function HourlyBars({ hourly }: { hourly: { hour: number; count: number; pnl: number; winRate: number }[] }) {
