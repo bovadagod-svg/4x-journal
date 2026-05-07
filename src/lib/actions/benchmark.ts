@@ -11,14 +11,12 @@ const TICKER: Record<BenchmarkSymbol, string> = {
   vix: "I:VIX",
 }
 
+// LABEL map lives inline in getBenchmarkSeries below. Public sync helpers
+// can't be exported from a "use server" file — every export must be async.
 const LABEL: Record<BenchmarkSymbol, string> = {
   spx: "S&P 500",
   dxy: "DXY",
   vix: "VIX",
-}
-
-export function benchmarkLabel(s: BenchmarkSymbol): string {
-  return LABEL[s]
 }
 
 /**
