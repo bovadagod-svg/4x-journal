@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -36,15 +36,8 @@ export function UnderwaterCurve({ trades }: { trades: Trade[] }) {
       </div>
 
       {data.narrative && (
-        <div style={{
-          marginTop: 12, padding: 10,
-          background: "rgba(229, 162, 59, 0.06)",
-          border: "1px solid rgba(229, 162, 59, 0.25)",
-          borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Icon name="info" size={13} color="var(--c-amber)" />
-          <span>{data.narrative}</span>
+        <div style={{ marginTop: 12 }}>
+          <NarrativeBanner tone="warn">{data.narrative}</NarrativeBanner>
         </div>
       )}
     </div>

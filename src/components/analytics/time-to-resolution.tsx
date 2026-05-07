@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -41,15 +41,8 @@ export function TimeToResolution({ trades }: { trades: Trade[] }) {
       <Histogram winners={stats.winners.bucketCounts} losers={stats.losers.bucketCounts} bucketLabels={BUCKET_LABELS} />
 
       {stats.narrative && (
-        <div style={{
-          marginTop: 12, padding: 10,
-          background: stats.narrative.tone === "bad" ? "rgba(190, 51, 61, 0.06)" : "rgba(17, 196, 88, 0.06)",
-          border: `1px solid ${stats.narrative.tone === "bad" ? "rgba(190, 51, 61, 0.25)" : "rgba(17, 196, 88, 0.25)"}`,
-          borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Icon name={stats.narrative.tone === "bad" ? "flame" : "sparkle"} size={13} color={stats.narrative.tone === "bad" ? "var(--c-red-bright)" : "var(--c-green-bright)"} />
-          <span>{stats.narrative.text}</span>
+        <div style={{ marginTop: 12 }}>
+          <NarrativeBanner tone={stats.narrative.tone}>{stats.narrative.text}</NarrativeBanner>
         </div>
       )}
     </div>

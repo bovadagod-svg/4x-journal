@@ -1,16 +1,27 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { EquityCurve } from "@/components/analytics/equity-curve"
 import { formatUSD } from "@/lib/finance"
+import { getBenchmarkSeries, type BenchmarkPoint, type BenchmarkSymbol } from "@/lib/actions/benchmark"
 import type { EquityPoint } from "@/lib/queries/analytics"
 
 const RANGES = ["7D", "30D", "90D", "YTD", "All"] as const
 type Range = typeof RANGES[number]
 
+const BENCHMARK_OPTIONS: Array<{ value: BenchmarkSymbol | "none"; label: string }> = [
+  { value: "none", label: "No benchmark" },
+  { value: "spx", label: "vs S&P 500" },
+  { value: "dxy", label: "vs DXY" },
+]
+
 export function EquityCurveCard({ points }: { points: EquityPoint[] }) {
   const [range, setRange] = useState<Range>("30D")
+  const [benchmarkChoice, setBenchmarkChoice] = useState<BenchmarkSymbol | "none">("none")
+  const [benchmarkData, setBenchmarkData] = useState<BenchmarkPoint[] | null>(null)
+  const [benchmarkLabel, setBenchmarkLabel] = useState<string | null>(null)
+  const [benchmarkUnavailable, setBenchmarkUnavailable] = useState(false)
 
   const filtered = useMemo(() => filterByRange(points, range), [points, range])
 
@@ -19,7 +30,6 @@ export function EquityCurveCard({ points }: { points: EquityPoint[] }) {
   const periodReturn = last - first
   const tone = last > 0 ? "var(--c-green-bright)" : last < 0 ? "var(--c-red-bright)" : "var(--c-fg)"
 
-  // Peak drawdown within the filtered window
   let peak = filtered[0]?.equity ?? 0
   let maxDD = 0
   for (const p of filtered) {
@@ -28,24 +38,65 @@ export function EquityCurveCard({ points }: { points: EquityPoint[] }) {
     if (dd > maxDD) maxDD = dd
   }
 
+  // Re-fetch benchmark whenever the symbol or range changes.
+  useEffect(() => {
+    if (benchmarkChoice === "none" || filtered.length < 2) {
+      setBenchmarkData(null)
+      setBenchmarkLabel(null)
+      setBenchmarkUnavailable(false)
+      return
+    }
+    let cancelled = false
+    const fromIso = filtered[0].date
+    const toIso = filtered[filtered.length - 1].date
+    getBenchmarkSeries(benchmarkChoice, fromIso, toIso).then((res) => {
+      if (cancelled) return
+      if (res.ok) {
+        setBenchmarkData(res.points)
+        setBenchmarkLabel(res.label)
+        setBenchmarkUnavailable(res.points.length < 2)
+      } else {
+        setBenchmarkData(null)
+        setBenchmarkLabel(null)
+        setBenchmarkUnavailable(true)
+      }
+    })
+    return () => { cancelled = true }
+  }, [benchmarkChoice, filtered])
+
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--c-border)", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--c-border)", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h3 className="card-title">Equity Curve</h3>
-          <p className="card-subtitle">Cumulative P&L from closed trades</p>
+          <p className="card-subtitle">Cumulative P&L from closed trades · drawdown markers shown</p>
         </div>
-        <div className="tab-row" style={{ background: "var(--c-bg-elev-2)", padding: 3, borderRadius: 8 }}>
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              className={"tab " + (r === range ? "active" : "")}
-              onClick={() => setRange(r)}
-              style={{ padding: "5px 10px", fontSize: 12 }}
-            >
-              {r}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select
+            value={benchmarkChoice}
+            onChange={(e) => setBenchmarkChoice(e.target.value as BenchmarkSymbol | "none")}
+            style={{
+              fontSize: 11.5, padding: "4px 8px",
+              background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)",
+              borderRadius: 6, color: benchmarkChoice === "none" ? "var(--c-fg-muted)" : "var(--c-purple-bright)",
+            }}
+          >
+            {BENCHMARK_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <div className="tab-row" style={{ background: "var(--c-bg-elev-2)", padding: 3, borderRadius: 8 }}>
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                className={"tab " + (r === range ? "active" : "")}
+                onClick={() => setRange(r)}
+                style={{ padding: "5px 10px", fontSize: 12 }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -67,7 +118,12 @@ export function EquityCurveCard({ points }: { points: EquityPoint[] }) {
       </div>
 
       <div style={{ padding: 16 }}>
-        <EquityCurve points={filtered} height={200} />
+        <EquityCurve points={filtered} height={200} benchmark={benchmarkData} benchmarkLabel={benchmarkLabel} />
+        {benchmarkChoice !== "none" && benchmarkUnavailable && (
+          <div style={{ marginTop: 6, fontSize: 11, color: "var(--c-fg-dim)" }}>
+            Benchmark unavailable — your Polygon plan may not cover {benchmarkChoice.toUpperCase()}, or no bars in this range.
+          </div>
+        )}
       </div>
     </div>
   )

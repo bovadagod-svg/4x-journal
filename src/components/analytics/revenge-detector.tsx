@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
 
@@ -75,24 +75,15 @@ export function RevengeDetector({ trades }: { trades: Trade[] }) {
       </div>
 
       {(wrDelta < -8 || expDelta < -10) && stats.revenge.n >= 5 && (
-        <div style={{
-          padding: 10,
-          background: "rgba(190, 51, 61, 0.06)",
-          border: "1px solid rgba(190, 51, 61, 0.25)",
-          borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Icon name="flame" size={13} color="var(--c-red-bright)" />
-          <span>
-            Your revenge trades win{" "}
-            <strong style={{ color: "var(--c-red-bright)" }}>
-              {Math.abs(Math.round(wrDelta))}pp less often
-            </strong>{" "}
-            than baseline (avg P&amp;L {formatUSD(stats.revenge.avgPnL, { signed: true })} vs.{" "}
-            {formatUSD(stats.baseline.avgPnL, { signed: true })}). The math says wait —
-            consider a hard rule: no new entry for {windowMin}m after a stop-out.
-          </span>
-        </div>
+        <NarrativeBanner tone="bad">
+          Your revenge trades win{" "}
+          <strong style={{ color: "var(--c-red-bright)" }}>
+            {Math.abs(Math.round(wrDelta))}pp less often
+          </strong>{" "}
+          than baseline (avg P&amp;L {formatUSD(stats.revenge.avgPnL, { signed: true })} vs.{" "}
+          {formatUSD(stats.baseline.avgPnL, { signed: true })}). The math says wait —
+          consider a hard rule: no new entry for {windowMin}m after a stop-out.
+        </NarrativeBanner>
       )}
     </div>
   )

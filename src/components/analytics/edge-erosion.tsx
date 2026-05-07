@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { NarrativeBanner } from "./narrative-banner"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -70,13 +71,8 @@ export function EdgeErosion({ trades }: { trades: Trade[] }) {
             <Legend color="var(--c-purple-bright)" label={`Rolling expectancy (${series.firstExp >= 0 ? "+" : ""}${formatShort(series.firstExp)} → ${series.lastExp >= 0 ? "+" : ""}${formatShort(series.lastExp)})`} />
           </div>
           {series.narrative && (
-            <div style={{
-              marginTop: 10, padding: 10,
-              background: series.narrative.tone === "bad" ? "rgba(190, 51, 61, 0.06)" : "rgba(17, 196, 88, 0.06)",
-              border: `1px solid ${series.narrative.tone === "bad" ? "rgba(190, 51, 61, 0.25)" : "rgba(17, 196, 88, 0.25)"}`,
-              borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-            }}>
-              {series.narrative.text}
+            <div style={{ marginTop: 10 }}>
+              <NarrativeBanner tone={series.narrative.tone}>{series.narrative.text}</NarrativeBanner>
             </div>
           )}
         </>

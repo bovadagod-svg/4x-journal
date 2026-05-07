@@ -33,6 +33,12 @@
   --c-green-soft: rgba(17, 196, 88, 0.15);
 
   --c-amber: #E5A23B;
+  --c-amber-soft: rgba(229, 162, 59, 0.15);
+
+  /* Cyan — used in dual-axis analytics (e.g. EdgeErosion's WR line) where we
+     need a third color distinct from green / red / purple. */
+  --c-cyan-bright: #5BC8E0;
+  --c-cyan-soft: rgba(91, 200, 224, 0.15);
 
   /* Accent — wired to tweaks.accent via [data-accent="..."] below */
   --c-accent: var(--c-purple);
@@ -71,6 +77,8 @@
   --c-purple-soft: rgba(67, 18, 160, 0.08);
   --c-red-soft: rgba(190, 51, 61, 0.08);
   --c-green-soft: rgba(17, 196, 88, 0.08);
+  --c-amber-soft: rgba(229, 162, 59, 0.10);
+  --c-cyan-soft: rgba(91, 200, 224, 0.10);
 }
 
 [data-accent="green"] {

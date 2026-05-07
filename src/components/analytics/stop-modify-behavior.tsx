@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -111,16 +111,7 @@ export function StopModifyBehavior({ trades }: { trades: Trade[] }) {
       </div>
 
       {narrative && (
-        <div style={{
-          padding: 10,
-          background: narrative.tone === "bad" ? "rgba(190, 51, 61, 0.06)" : "rgba(17, 196, 88, 0.06)",
-          border: `1px solid ${narrative.tone === "bad" ? "rgba(190, 51, 61, 0.25)" : "rgba(17, 196, 88, 0.25)"}`,
-          borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Icon name={narrative.tone === "bad" ? "flame" : "sparkle"} size={13} color={narrative.tone === "bad" ? "var(--c-red-bright)" : "var(--c-green-bright)"} />
-          <span>{narrative.text}</span>
-        </div>
+        <NarrativeBanner tone={narrative.tone}>{narrative.text}</NarrativeBanner>
       )}
     </div>
   )

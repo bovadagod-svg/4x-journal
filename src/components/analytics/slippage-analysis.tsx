@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import { pipsBetween } from "@/lib/pip"
 import type { Trade } from "@/lib/queries/trades"
 import type { TradeFill } from "@/lib/queries/trade-fills"
@@ -50,24 +50,9 @@ export function SlippageAnalysis({
       </div>
 
       {stats.narrative && (
-        <div style={{
-          padding: 10,
-          background: stats.narrative.tone === "bad"
-            ? "rgba(190, 51, 61, 0.06)"
-            : "rgba(17, 196, 88, 0.06)",
-          border: `1px solid ${stats.narrative.tone === "bad"
-            ? "rgba(190, 51, 61, 0.25)"
-            : "rgba(17, 196, 88, 0.25)"}`,
-          borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Icon
-            name={stats.narrative.tone === "bad" ? "info" : "sparkle"}
-            size={13}
-            color={stats.narrative.tone === "bad" ? "var(--c-amber)" : "var(--c-green-bright)"}
-          />
-          <span>{stats.narrative.text}</span>
-        </div>
+        <NarrativeBanner tone={stats.narrative.tone === "bad" ? "warn" : "good"}>
+          {stats.narrative.text}
+        </NarrativeBanner>
       )}
     </div>
   )

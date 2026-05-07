@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import { formatUSD } from "@/lib/finance"
 import type { TradeFill } from "@/lib/queries/trade-fills"
 
@@ -77,22 +77,15 @@ export function FeeBleed({ fillsByTrade }: { fillsByTrade: Map<string, TradeFill
           </div>
           <SwapByDayBars day={stats.swapByDay} />
           {stats.swapByDay.wedSpike && (
-            <div style={{
-              marginTop: 10, padding: 10,
-              background: "rgba(229, 162, 59, 0.06)",
-              border: "1px solid rgba(229, 162, 59, 0.25)",
-              borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-              display: "flex", alignItems: "center", gap: 8,
-            }}>
-              <Icon name="info" size={13} color="var(--c-amber)" />
-              <span>
+            <div style={{ marginTop: 10 }}>
+              <NarrativeBanner tone="warn">
                 Wednesday accounts for{" "}
                 <strong style={{ color: "var(--c-amber)" }}>
                   {Math.round((Math.abs(stats.swapByDay.byDay[3]) / stats.swapByDay.totalNonZero) * 100)}%
                 </strong>{" "}
                 of your swap charges — the triple-rollover effect for positions held past 5pm NY.
                 Plan exits before Wednesday close when you can.
-              </span>
+              </NarrativeBanner>
             </div>
           )}
         </div>

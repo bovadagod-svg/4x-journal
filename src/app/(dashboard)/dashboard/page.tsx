@@ -27,6 +27,8 @@ import { StreakCard } from "@/components/dashboard/streak-card"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { RangeFilterBar } from "@/components/shell/range-filter-bar"
 import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
+import { DashboardModeToggle } from "@/components/dashboard/dashboard-mode-toggle"
+import { getDashboardMode, resolveDashboardMode } from "@/lib/dashboard-mode"
 
 export default async function DashboardPage({
   searchParams,
@@ -40,6 +42,7 @@ export default async function DashboardPage({
 
   const watchlist = await getWatchlist()
   const watchCurrencies = currenciesFromWatchlist(watchlist)
+  const modePref = await getDashboardMode()
 
   const [pnl, openTrades, recentEntries, recentTrades, equity, stats, pairs, playbooks, events, discipline] = await Promise.all([
     getPnLByPeriod(),                                          // today/week/month — fixed buckets, ignores range
@@ -54,23 +57,33 @@ export default async function DashboardPage({
     getDisciplineStats(),
   ])
 
+  // Effective mode: in auto, lite when sample is below 50 closed trades.
+  // Lite mode hides advanced widgets that need bigger samples to be useful.
+  const closedCount = recentTrades.filter((t) => t.status === "closed").length
+  const mode = resolveDashboardMode(modePref, closedCount)
+  const showAdvanced = mode === "full"
+
   return (
     <>
       <SectionHeader
         title={m.title}
         subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
-        actions={<><RangeFilterBar /><LogTradeButton /></>}
+        actions={<>
+          <DashboardModeToggle current={modePref} effective={mode} />
+          <RangeFilterBar />
+          <LogTradeButton />
+        </>}
       />
 
       <ScopeBanner />
 
       <TickerTape />
 
-      <CoachNudge stats={stats} />
+      {showAdvanced && <CoachNudge stats={stats} />}
 
       <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />
 
-      <CorrelationWarning />
+      {showAdvanced && <CorrelationWarning />}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
         <PipStatsCard trades={recentTrades} />
@@ -92,7 +105,7 @@ export default async function DashboardPage({
 
       <RecentTrades trades={recentTrades} />
 
-      <AnalyticsSummary stats={stats} pairs={pairs} />
+      {showAdvanced && <AnalyticsSummary stats={stats} pairs={pairs} />}
 
       <div className="grid-2-1">
         <JournalFeed entries={recentEntries} trades={recentTrades} />

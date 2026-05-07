@@ -112,9 +112,25 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                     </div>
                   </div>
                 </div>
-                <button onClick={onClose} style={{ background: "var(--c-bg-elev-3)", border: "1px solid var(--c-border)", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-fg)", cursor: "pointer" }}>
-                  <Icon name="x" size={14} />
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <a
+                    href={`/trades/${t.id}/print`}
+                    target="_blank"
+                    rel="noopener"
+                    title="Print or save as PDF"
+                    style={{
+                      background: "var(--c-bg-elev-3)", border: "1px solid var(--c-border)",
+                      borderRadius: 8, width: 32, height: 32,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "var(--c-fg-muted)", textDecoration: "none",
+                    }}
+                  >
+                    <Icon name="external" size={13} />
+                  </a>
+                  <button onClick={onClose} style={{ background: "var(--c-bg-elev-3)", border: "1px solid var(--c-border)", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-fg)", cursor: "pointer" }}>
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
               </div>
 
               {/* P&L / R headline */}
