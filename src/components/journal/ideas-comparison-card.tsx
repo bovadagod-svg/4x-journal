@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Icon } from "@/components/icons"
 import type { JournalEntry } from "@/lib/queries/trades"
+import { resolveAllPendingIdeas } from "@/lib/actions/idea-resolution"
 
 const STILL_WATCHING_DAYS = 14
 
@@ -12,17 +13,25 @@ type IdeaStats = {
   watching: number
   skipped: number
   executionRate: number  // 0..1
+  /** Sum of resolved_r across SKIPPED ideas with idea_outcome populated.
+   *  This is the #58 "would have averaged +0.8R" punchline. */
+  skippedResolvedRTotal: number
+  skippedResolvedRCount: number
 }
+
+type IdeaOutcomeShape = { resolution?: string; resolved_r?: number }
 
 function ideaStats(entries: JournalEntry[]): IdeaStats {
   const ideas = entries.filter((e) => e.kind === "idea")
   if (ideas.length === 0) {
-    return { total: 0, executed: 0, watching: 0, skipped: 0, executionRate: 0 }
+    return { total: 0, executed: 0, watching: 0, skipped: 0, executionRate: 0, skippedResolvedRTotal: 0, skippedResolvedRCount: 0 }
   }
   const watchCutoff = Date.now() - STILL_WATCHING_DAYS * 86_400_000
   let executed = 0
   let watching = 0
   let skipped = 0
+  let skippedResolvedRTotal = 0
+  let skippedResolvedRCount = 0
   for (const e of ideas) {
     if (e.trade_id) {
       executed++
@@ -30,22 +39,41 @@ function ideaStats(entries: JournalEntry[]): IdeaStats {
       watching++
     } else {
       skipped++
+      const outcome = e.idea_outcome as IdeaOutcomeShape | null
+      if (outcome && typeof outcome.resolved_r === "number" && Number.isFinite(outcome.resolved_r)) {
+        skippedResolvedRTotal += outcome.resolved_r
+        skippedResolvedRCount += 1
+      }
     }
   }
-  // Execution rate is a fraction of "ideas with a verdict" (executed +
-  // skipped) — still-watching ideas haven't been judged yet, so they
-  // shouldn't drag the rate down.
   const decided = executed + skipped
   const executionRate = decided > 0 ? executed / decided : 0
-  return { total: ideas.length, executed, watching, skipped, executionRate }
+  return { total: ideas.length, executed, watching, skipped, executionRate, skippedResolvedRTotal, skippedResolvedRCount }
 }
 
 export function IdeasComparisonCard({ entries }: { entries: JournalEntry[] }) {
+  const [resolving, startResolve] = useTransition()
+  const [resolveMsg, setResolveMsg] = useState<string | null>(null)
   const stats30d = useMemo(() => {
     const cutoff = Date.now() - 30 * 86_400_000
     return ideaStats(entries.filter((e) => new Date(e.created_at).getTime() >= cutoff))
   }, [entries])
   const statsAllTime = useMemo(() => ideaStats(entries), [entries])
+  // Pending ideas = setup-filled but no outcome yet, in the 30d window
+  const pendingResolution = useMemo(() => entries.filter((e) =>
+    e.kind === "idea" &&
+    !e.trade_id &&
+    !e.idea_outcome &&
+    e.idea_pair && e.idea_side && e.idea_entry && e.idea_stop && e.idea_target
+  ).length, [entries])
+
+  const onResolve = () => {
+    setResolveMsg("Resolving…")
+    startResolve(async () => {
+      const r = await resolveAllPendingIdeas()
+      setResolveMsg(r.ok ? `Resolved ${r.resolved} · ${r.failed} failed` : "Resolution failed")
+    })
+  }
 
   if (statsAllTime.total === 0) return null
 
@@ -91,6 +119,44 @@ export function IdeasComparisonCard({ entries }: { entries: JournalEntry[] }) {
               ? `You skipped ${stats30d.skipped} of ${stats30d.executed + stats30d.skipped} judged ideas. Worth reviewing whether those were good decisions or lost edge.`
               : `Only ${ratePct}% of your judged ideas turned into trades. Either your idea bar is too low, or hesitation is leaving setups on the table.`}
         </p>
+      )}
+
+      {/* #58 Skipped-ideas hypothetical R — needs idea_outcome populated */}
+      {stats30d.skippedResolvedRCount >= 3 && (() => {
+        const avg = stats30d.skippedResolvedRTotal / stats30d.skippedResolvedRCount
+        const tone = avg >= 0.3 ? "good" : avg <= -0.3 ? "ok" : "neutral"
+        const text = avg >= 0.3
+          ? `The ${stats30d.skippedResolvedRCount} skipped ideas you fully specified would have averaged ${avg > 0 ? "+" : ""}${avg.toFixed(2)}R. Those were good setups you didn't take.`
+          : avg <= -0.3
+            ? `The ${stats30d.skippedResolvedRCount} skipped ideas you specified would have lost ${Math.abs(avg).toFixed(2)}R on average. Skipping was the right call.`
+            : `${stats30d.skippedResolvedRCount} skipped ideas resolved to ~breakeven on average (${avg > 0 ? "+" : ""}${avg.toFixed(2)}R). The setups were neither edges nor traps.`
+        return (
+          <div style={{
+            marginTop: 10, padding: 10,
+            background: tone === "good" ? "var(--c-amber-soft)" : tone === "ok" ? "var(--c-green-soft)" : "var(--c-bg-elev-2)",
+            border: `1px solid ${tone === "good" ? "rgba(229, 162, 59, 0.3)" : tone === "ok" ? "rgba(17, 196, 88, 0.3)" : "var(--c-border)"}`,
+            borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
+          }}>
+            {text}
+          </div>
+        )
+      })()}
+
+      {/* Resolve pending ideas (Polygon backfill) */}
+      {pendingResolution > 0 && (
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+          <button
+            type="button"
+            className="btn"
+            disabled={resolving}
+            onClick={onResolve}
+            style={{ fontSize: 11, padding: "4px 10px" }}
+          >
+            <Icon name="refresh" size={11} /> {resolving ? "Resolving…" : `Resolve ${pendingResolution} idea${pendingResolution === 1 ? "" : "s"}`}
+          </button>
+          {resolveMsg && <span style={{ color: "var(--c-fg-muted)" }}>{resolveMsg}</span>}
+          <span style={{ color: "var(--c-fg-dim)", marginLeft: "auto" }}>Uses Polygon historical bars</span>
+        </div>
       )}
     </div>
   )

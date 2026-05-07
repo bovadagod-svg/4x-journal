@@ -29,6 +29,13 @@ export type Database = {
           label: string
           margin_level: number | null
           margin_used: number | null
+          prop_max_daily_drawdown_pct: number | null
+          prop_max_drawdown_pct: number | null
+          prop_next_payout_at: string | null
+          prop_payout_cadence_days: number | null
+          prop_phase: string | null
+          prop_profit_target_pct: number | null
+          prop_starting_balance: number | null
           status: string
           swap_total: number | null
           updated_at: string
@@ -48,6 +55,13 @@ export type Database = {
           label?: string
           margin_level?: number | null
           margin_used?: number | null
+          prop_max_daily_drawdown_pct?: number | null
+          prop_max_drawdown_pct?: number | null
+          prop_next_payout_at?: string | null
+          prop_payout_cadence_days?: number | null
+          prop_phase?: string | null
+          prop_profit_target_pct?: number | null
+          prop_starting_balance?: number | null
           status?: string
           swap_total?: number | null
           updated_at?: string
@@ -67,6 +81,13 @@ export type Database = {
           label?: string
           margin_level?: number | null
           margin_used?: number | null
+          prop_max_daily_drawdown_pct?: number | null
+          prop_max_drawdown_pct?: number | null
+          prop_next_payout_at?: string | null
+          prop_payout_cadence_days?: number | null
+          prop_phase?: string | null
+          prop_profit_target_pct?: number | null
+          prop_starting_balance?: number | null
           status?: string
           swap_total?: number | null
           updated_at?: string
@@ -215,6 +236,12 @@ export type Database = {
           created_at: string
           during_trade: Json
           id: string
+          idea_entry: number | null
+          idea_outcome: Json | null
+          idea_pair: string | null
+          idea_side: string | null
+          idea_stop: number | null
+          idea_target: number | null
           is_public: boolean
           kind: string
           last_edited_at: string
@@ -239,6 +266,12 @@ export type Database = {
           created_at?: string
           during_trade?: Json
           id?: string
+          idea_entry?: number | null
+          idea_outcome?: Json | null
+          idea_pair?: string | null
+          idea_side?: string | null
+          idea_stop?: number | null
+          idea_target?: number | null
           is_public?: boolean
           kind?: string
           last_edited_at?: string
@@ -263,6 +296,12 @@ export type Database = {
           created_at?: string
           during_trade?: Json
           id?: string
+          idea_entry?: number | null
+          idea_outcome?: Json | null
+          idea_pair?: string | null
+          idea_side?: string | null
+          idea_stop?: number | null
+          idea_target?: number | null
           is_public?: boolean
           kind?: string
           last_edited_at?: string
@@ -398,6 +437,24 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          count: number
+          key: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          key: string
+          window_start?: string
+        }
+        Update: {
+          count?: number
+          key?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       risk_rules: {
         Row: {
           account_id: string
@@ -465,6 +522,7 @@ export type Database = {
           magic_number: string | null
           notes: string | null
           order_type: string | null
+          pip_value_acct: number | null
           pnl_contribution: number | null
           price: number
           r_realized: number | null
@@ -489,6 +547,7 @@ export type Database = {
           magic_number?: string | null
           notes?: string | null
           order_type?: string | null
+          pip_value_acct?: number | null
           pnl_contribution?: number | null
           price: number
           r_realized?: number | null
@@ -513,6 +572,7 @@ export type Database = {
           magic_number?: string | null
           notes?: string | null
           order_type?: string | null
+          pip_value_acct?: number | null
           pnl_contribution?: number | null
           price?: number
           r_realized?: number | null
@@ -543,11 +603,16 @@ export type Database = {
           contract_size: number
           created_at: string
           entry_price: number
-          lifecycle_events: Json
           exit_price: number | null
           external_id: string | null
           external_provider: string | null
           id: string
+          lifecycle_events: Json
+          mae_mfe_resolved_at: string | null
+          mae_price: number | null
+          mae_r: number | null
+          mfe_price: number | null
+          mfe_r: number | null
           mood: string | null
           notes: string | null
           opened_at: string | null
@@ -572,12 +637,17 @@ export type Database = {
           closed_at?: string | null
           contract_size?: number
           created_at?: string
-          lifecycle_events?: Json
           entry_price: number
           exit_price?: number | null
           external_id?: string | null
           external_provider?: string | null
           id?: string
+          lifecycle_events?: Json
+          mae_mfe_resolved_at?: string | null
+          mae_price?: number | null
+          mae_r?: number | null
+          mfe_price?: number | null
+          mfe_r?: number | null
           mood?: string | null
           notes?: string | null
           opened_at?: string | null
@@ -602,12 +672,17 @@ export type Database = {
           closed_at?: string | null
           contract_size?: number
           created_at?: string
-          lifecycle_events?: Json
           entry_price?: number
           exit_price?: number | null
           external_id?: string | null
           external_provider?: string | null
           id?: string
+          lifecycle_events?: Json
+          mae_mfe_resolved_at?: string | null
+          mae_price?: number | null
+          mae_r?: number | null
+          mfe_price?: number | null
+          mfe_r?: number | null
           mood?: string | null
           notes?: string | null
           opened_at?: string | null
@@ -655,6 +730,7 @@ export type Database = {
           coach_use_ai: boolean
           confirm_above_pct: number
           created_at: string
+          dashboard_layout: Json | null
           default_fixed_lots: number
           default_playbook_id: string | null
           default_risk_pct: number
@@ -709,6 +785,7 @@ export type Database = {
           coach_use_ai?: boolean
           confirm_above_pct?: number
           created_at?: string
+          dashboard_layout?: Json | null
           default_fixed_lots?: number
           default_playbook_id?: string | null
           default_risk_pct?: number
@@ -763,6 +840,7 @@ export type Database = {
           coach_use_ai?: boolean
           confirm_above_pct?: number
           created_at?: string
+          dashboard_layout?: Json | null
           default_fixed_lots?: number
           default_playbook_id?: string | null
           default_risk_pct?: number
@@ -900,7 +978,7 @@ export type Database = {
       get_public_profile: {
         Args: { p_handle: string }
         Returns: {
-          avatar_url: string | null
+          avatar_url: string
           display_name: string
           handle: string
           joined_at: string

@@ -12,6 +12,14 @@ const AccountSchema = z.object({
   equity: z.coerce.number().nonnegative().nullish().transform((v) => v ?? 0),
   status: z.enum(["live", "demo", "funded", "challenge"]),
   color: z.string().regex(/^#[0-9a-f]{6}$/i, { error: "Hex color required." }),
+  // #59 Prop firm phase tracking — all optional, only relevant for prop accounts.
+  prop_phase: z.enum(["eval", "verification", "funded"]).nullish().or(z.literal("").transform(() => null)),
+  prop_starting_balance: z.coerce.number().positive().nullish(),
+  prop_profit_target_pct: z.coerce.number().positive().nullish(),
+  prop_max_drawdown_pct: z.coerce.number().positive().nullish(),
+  prop_max_daily_drawdown_pct: z.coerce.number().positive().nullish(),
+  prop_payout_cadence_days: z.coerce.number().int().positive().nullish(),
+  prop_next_payout_at: z.string().nullish().or(z.literal("").transform(() => null)),
 })
 
 export type AccountFormState =

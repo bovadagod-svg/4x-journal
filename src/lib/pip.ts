@@ -123,3 +123,59 @@ export function bucketSortKey(label: string): number {
   const m = label.match(/^(\d+)/)
   return m ? parseInt(m[1], 10) : 0
 }
+
+/**
+ * Pip value in account currency for a given fill. Used for #60 — captured at
+ * fill time so every "average pips" analytic stays currency-correct without
+ * downstream conversion.
+ *
+ * Math:
+ *   pip value (quote currency) = pipSize(pair) × sizeUnits
+ *   pip value (account currency) = pip value (quote) × FX rate (quote → account)
+ *
+ * For USD-quoted FX (XYZ/USD), quote == USD so the FX rate is 1 when the
+ * account is USD. For non-USD-quoted (USD/JPY, EUR/JPY, indices, metals
+ * priced in non-account currency), the caller supplies the rate map.
+ *
+ * Returns null when no plausible rate can be derived (e.g. metals/indices
+ * with no rate set, or unrecognized currency in the pair string).
+ */
+export function pipValueInAccountCurrency(args: {
+  pair: Pair
+  /** Position size in instrument units (lots × contract_size). */
+  sizeUnits: number
+  accountCurrency: string
+  /** User-supplied FX rate map keyed `FROM->TO`, e.g. {"JPY->USD": 0.0067}. */
+  fxRates: Record<string, number>
+}): number | null {
+  const pair = args.pair.toUpperCase()
+  const acct = args.accountCurrency.toUpperCase()
+  const pipQuote = pipSize(pair) * args.sizeUnits
+
+  const split = pair.replace("/", " ").trim().split(/\s+/)
+  // Standard FX format is "XYZ/USD" (or "XYZ-USD"); the trailing 3-letter
+  // chunk is the quote currency. Indices/crypto often use single-token
+  // tickers — return null for those, the caller will store NULL.
+  let quote: string | null = null
+  if (split.length >= 2 && split[split.length - 1].length >= 3) {
+    quote = split[split.length - 1]
+  } else {
+    const m = pair.match(/[A-Z]{3}$/)
+    quote = m ? m[0] : null
+  }
+  if (!quote) return null
+
+  // Account currency match — no conversion needed.
+  if (quote === acct) return Number(pipQuote.toFixed(4))
+
+  // Look up direct rate (quote → account) or fall back to inverse.
+  const direct = args.fxRates[`${quote}->${acct}`]
+  if (typeof direct === "number" && Number.isFinite(direct) && direct > 0) {
+    return Number((pipQuote * direct).toFixed(4))
+  }
+  const inverse = args.fxRates[`${acct}->${quote}`]
+  if (typeof inverse === "number" && Number.isFinite(inverse) && inverse > 0) {
+    return Number((pipQuote / inverse).toFixed(4))
+  }
+  return null
+}

@@ -19,6 +19,7 @@ import { StopModifyBehavior } from "./stop-modify-behavior"
 import { SlippageAnalysis } from "./slippage-analysis"
 import { FeeBleed } from "./fee-bleed"
 import { EdgeErosion } from "./edge-erosion"
+import { MaeMfeCard } from "./mae-mfe-card"
 import { StreakAwarePerf } from "./streak-aware-perf"
 import { TimeToResolution } from "./time-to-resolution"
 import { UnderwaterCurve } from "./underwater-curve"
@@ -72,6 +73,9 @@ export function AnalyticsView({
 
       {/* Stop-Loss & Take-Profit deep dive */}
       <StopTargetAnalysis trades={filtered} />
+
+      {/* MAE / MFE — needs Polygon backfill */}
+      <MaeMfeCard trades={filtered} />
 
       {/* Stop-modify behavior — needs broker lifecycle_events */}
       <StopModifyBehavior trades={filtered} />

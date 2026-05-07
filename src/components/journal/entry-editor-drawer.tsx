@@ -67,6 +67,12 @@ export function EntryEditorDrawer({
   const [coachSuggesting, setCoachSuggesting] = useState(false)
   const [coachSuggestion, setCoachSuggestion] = useState<CoachTagSuggestion | null>(null)
   const [coachError, setCoachError] = useState<string | null>(null)
+  // #58 Hypothetical idea fields — only relevant when entry.kind === "idea".
+  const [ideaPair, setIdeaPair] = useState("")
+  const [ideaSide, setIdeaSide] = useState<"" | "long" | "short">("")
+  const [ideaEntry, setIdeaEntry] = useState("")
+  const [ideaStop, setIdeaStop] = useState("")
+  const [ideaTarget, setIdeaTarget] = useState("")
 
   // Live (during-trade) notes — server-managed, not autosaved
   const [during, setDuring] = useState<DuringNote[]>([])
@@ -105,6 +111,11 @@ export function EntryEditorDrawer({
       setShareToken(e.share_token ?? null)
       setDuring(Array.isArray(e.during_trade) ? (e.during_trade as DuringNote[]) : [])
       setShots(Array.isArray(e.screenshots) ? (e.screenshots as Screenshot[]) : [])
+      setIdeaPair(e.idea_pair ?? "")
+      setIdeaSide((e.idea_side === "long" || e.idea_side === "short") ? e.idea_side : "")
+      setIdeaEntry(e.idea_entry != null ? String(e.idea_entry) : "")
+      setIdeaStop(e.idea_stop != null ? String(e.idea_stop) : "")
+      setIdeaTarget(e.idea_target != null ? String(e.idea_target) : "")
       setTab("pre")
     })()
   }, [entryId])
@@ -113,7 +124,9 @@ export function EntryEditorDrawer({
   // Autosave debounced — fires when any of the autosaved fields change.
   const dirtyKey = useMemo(() => JSON.stringify({
     title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags, isPublic,
-  }), [title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags, isPublic])
+    ideaPair, ideaSide, ideaEntry, ideaStop, ideaTarget,
+  }), [title, mood, preTrade, postTrade, coldReview, lessons, tags, mistakes, ruleBreak, ruleBreakTags, isPublic,
+    ideaPair, ideaSide, ideaEntry, ideaStop, ideaTarget])
 
   useEffect(() => {
     if (!entry) return
@@ -137,6 +150,11 @@ export function EntryEditorDrawer({
         is_public: isPublic,
         tags,
         mistakes,
+        idea_pair: ideaPair || null,
+        idea_side: (ideaSide || null) as "long" | "short" | null,
+        idea_entry: ideaEntry ? Number(ideaEntry) : null,
+        idea_stop: ideaStop ? Number(ideaStop) : null,
+        idea_target: ideaTarget ? Number(ideaTarget) : null,
       })
       setSaveStatus(r.ok ? "saved" : "error")
     }, SAVE_DEBOUNCE_MS)
@@ -280,15 +298,63 @@ export function EntryEditorDrawer({
       {/* Tab body */}
       <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         {tab === "pre" && (
-          <Field label="Pre-trade thinking" hint="Why are you in? What's the thesis? What invalidates it?">
-            <textarea
-              value={preTrade}
-              onChange={(e) => setPreTrade(e.target.value)}
-              rows={14}
-              placeholder="Write freely…"
-              style={textareaStyle}
-            />
-          </Field>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {entry?.kind === "idea" && (
+              <Field label="Hypothetical setup" hint="Optional. If you fill these in, we can compute 'would-have-been' R for ideas you didn't take.">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <input
+                    type="text"
+                    value={ideaPair}
+                    onChange={(e) => setIdeaPair(e.target.value.toUpperCase())}
+                    placeholder="EUR/USD"
+                    style={ideaInputStyle}
+                  />
+                  <select
+                    value={ideaSide}
+                    onChange={(e) => setIdeaSide((e.target.value || "") as "" | "long" | "short")}
+                    style={ideaInputStyle}
+                  >
+                    <option value="">Side</option>
+                    <option value="long">Long</option>
+                    <option value="short">Short</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="any"
+                    value={ideaEntry}
+                    onChange={(e) => setIdeaEntry(e.target.value)}
+                    placeholder="Entry"
+                    style={ideaInputStyle}
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    value={ideaStop}
+                    onChange={(e) => setIdeaStop(e.target.value)}
+                    placeholder="Stop"
+                    style={ideaInputStyle}
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    value={ideaTarget}
+                    onChange={(e) => setIdeaTarget(e.target.value)}
+                    placeholder="Target"
+                    style={{ ...ideaInputStyle, gridColumn: "span 2" }}
+                  />
+                </div>
+              </Field>
+            )}
+            <Field label={entry?.kind === "idea" ? "Thesis" : "Pre-trade thinking"} hint={entry?.kind === "idea" ? "What's the setup? What would invalidate it?" : "Why are you in? What's the thesis? What invalidates it?"}>
+              <textarea
+                value={preTrade}
+                onChange={(e) => setPreTrade(e.target.value)}
+                rows={entry?.kind === "idea" ? 10 : 14}
+                placeholder="Write freely…"
+                style={textareaStyle}
+              />
+            </Field>
+          </div>
         )}
 
         {tab === "live" && (
@@ -816,6 +882,16 @@ const textareaStyle: React.CSSProperties = {
   fontFamily: "var(--font-body)",
   lineHeight: 1.55,
   resize: "vertical",
+  outline: "none",
+}
+const ideaInputStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--c-border)",
+  background: "var(--c-bg-elev-2)",
+  color: "var(--c-fg)",
+  fontSize: 13,
+  fontFamily: "var(--font-body)",
   outline: "none",
 }
 const selectStyle: React.CSSProperties = {

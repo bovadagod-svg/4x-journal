@@ -21,6 +21,14 @@ const SaveSchema = z.object({
   tags: z.array(z.string()).default([]),
   mistakes: z.array(z.string()).default([]),
   is_public: z.boolean().default(false),
+  // #58 Hypothetical idea fields — only persisted on kind === "idea". Backfill
+  // action computes idea_outcome from Polygon historical bars after the
+  // lookback window passes.
+  idea_pair: z.string().max(20).nullish().or(z.literal("").transform(() => null)),
+  idea_side: z.enum(["long", "short"]).nullish().or(z.literal("").transform(() => null)),
+  idea_entry: z.coerce.number().positive().nullish(),
+  idea_stop: z.coerce.number().positive().nullish(),
+  idea_target: z.coerce.number().positive().nullish(),
 })
 
 type SaveInput = z.infer<typeof SaveSchema>

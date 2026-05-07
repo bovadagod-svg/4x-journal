@@ -298,6 +298,42 @@ export function AccountFormModal({
             </div>
           </Field>
 
+          {/* Prop firm phase — optional, only relevant for funded/eval accounts (#59) */}
+          <details style={{ background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)", borderRadius: 10, padding: "10px 12px" }}>
+            <summary style={{ cursor: "pointer", fontSize: 12.5, color: "var(--c-fg-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+              <span>Prop firm tracking (optional)</span>
+              <span style={{ color: "var(--c-fg-dim)", fontSize: 11 }}>· phase, profit target, drawdown caps, payout cadence</span>
+            </summary>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+              <Field label="Phase">
+                <select name="prop_phase" defaultValue={account?.prop_phase ?? ""} style={inputStyle}>
+                  <option value="">— Not a prop account —</option>
+                  <option value="eval">Evaluation</option>
+                  <option value="verification">Verification</option>
+                  <option value="funded">Funded</option>
+                </select>
+              </Field>
+              <Field label="Starting balance">
+                <input name="prop_starting_balance" type="number" step="any" min="0" defaultValue={account?.prop_starting_balance ?? ""} placeholder="50000" style={inputStyle} />
+              </Field>
+              <Field label="Profit target %">
+                <input name="prop_profit_target_pct" type="number" step="any" min="0" defaultValue={account?.prop_profit_target_pct ?? ""} placeholder="8" style={inputStyle} />
+              </Field>
+              <Field label="Max DD %">
+                <input name="prop_max_drawdown_pct" type="number" step="any" min="0" defaultValue={account?.prop_max_drawdown_pct ?? ""} placeholder="10" style={inputStyle} />
+              </Field>
+              <Field label="Daily DD %">
+                <input name="prop_max_daily_drawdown_pct" type="number" step="any" min="0" defaultValue={account?.prop_max_daily_drawdown_pct ?? ""} placeholder="5" style={inputStyle} />
+              </Field>
+              <Field label="Payout cadence (days)">
+                <input name="prop_payout_cadence_days" type="number" step="1" min="0" defaultValue={account?.prop_payout_cadence_days ?? ""} placeholder="14" style={inputStyle} />
+              </Field>
+              <Field label="Next payout date">
+                <input name="prop_next_payout_at" type="date" defaultValue={account?.prop_next_payout_at ?? ""} style={inputStyle} />
+              </Field>
+            </div>
+          </details>
+
           {/* Errors */}
           {errorState && !errorState.ok && (
             <div style={{ padding: 10, borderRadius: 8, background: "var(--c-red-soft)", color: "var(--c-red-bright)", fontSize: 12, lineHeight: 1.5 }}>

@@ -26,6 +26,10 @@ import { PipStatsCard } from "@/components/dashboard/pip-stats-card"
 import { StreakCard } from "@/components/dashboard/streak-card"
 import { TodayPlanCard } from "@/components/dashboard/today-plan-card"
 import { WeeklyRetrospectiveCard } from "@/components/dashboard/weekly-retrospective-card"
+import { PropPhaseCard } from "@/components/dashboard/prop-phase-card"
+import { CustomizeWidgetsButton } from "@/components/dashboard/customize-widgets-button"
+import { parseDashboardLayout, isWidgetVisible } from "@/lib/dashboard-layout"
+import { createClient } from "@/lib/supabase/server"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { RangeFilterBar } from "@/components/shell/range-filter-bar"
 import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
@@ -45,6 +49,19 @@ export default async function DashboardPage({
   const watchlist = await getWatchlist()
   const watchCurrencies = currenciesFromWatchlist(watchlist)
   const modePref = await getDashboardMode()
+  // Per-user widget visibility from user_settings.dashboard_layout (#64).
+  const supabase = await createClient()
+  const { data: { user: dashUser } } = await supabase.auth.getUser()
+  let layout = parseDashboardLayout(null)
+  if (dashUser) {
+    const { data: row } = await supabase
+      .from("user_settings")
+      .select("dashboard_layout")
+      .eq("user_id", dashUser.id)
+      .maybeSingle()
+    layout = parseDashboardLayout(row?.dashboard_layout)
+  }
+  const v = (id: string) => isWidgetVisible(id, layout)
 
   const [pnl, openTrades, recentEntries, recentTrades, equity, stats, pairs, playbooks, events, discipline] = await Promise.all([
     getPnLByPeriod(),                                          // today/week/month — fixed buckets, ignores range
@@ -71,6 +88,7 @@ export default async function DashboardPage({
         title={m.title}
         subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
         actions={<>
+          <CustomizeWidgetsButton layout={layout} />
           <DashboardModeToggle current={modePref} effective={mode} />
           <RangeFilterBar />
           <LogTradeButton />
@@ -79,56 +97,68 @@ export default async function DashboardPage({
 
       <ScopeBanner />
 
-      <TickerTape />
+      {v("ticker-tape") && <TickerTape />}
 
-      {showAdvanced && <CoachNudge stats={stats} />}
+      {showAdvanced && v("coach-nudge") && <CoachNudge stats={stats} />}
 
-      {showAdvanced && <WeeklyRetrospectiveCard />}
+      {showAdvanced && v("weekly-retro") && <WeeklyRetrospectiveCard />}
 
-      <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />
+      {v("pnl-strip") && <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />}
 
-      <TodayPlanCard />
+      {v("today-plan") && <TodayPlanCard />}
 
-      {showAdvanced && <CorrelationWarning />}
+      {v("prop-phase") && <PropPhaseCard />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
-        <PipStatsCard trades={recentTrades} />
-        <StreakCard trades={recentTrades} periodLabel="recent" />
-      </div>
+      {showAdvanced && v("correlation-warning") && <CorrelationWarning />}
 
-      <div className="grid-2-1">
-        <EquityCurveCard points={equity} />
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
-          <RiskGauge />
-          <MarginCallCard />
-          <SessionClock />
+      {(v("pip-stats") || v("streak-card")) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
+          {v("pip-stats") && <PipStatsCard trades={recentTrades} />}
+          {v("streak-card") && <StreakCard trades={recentTrades} periodLabel="recent" />}
         </div>
-      </div>
+      )}
 
-      <LivePnlStrip />
-
-      <OpenPositions trades={openTrades} />
-
-      <RecentTrades trades={recentTrades} />
-
-      {showAdvanced && <AnalyticsSummary stats={stats} pairs={pairs} />}
-
-      <div className="grid-2-1">
-        <JournalFeed entries={recentEntries} trades={recentTrades} />
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
-          <MoodCheckIn
-            initialMood={discipline.todayMood as never}
-            rulesFollowedPct={discipline.rulesFollowedPct}
-            streakDays={discipline.streakDays}
-          />
-          <WatchlistWidget />
+      {(v("equity-curve") || v("risk-gauge") || v("margin-call") || v("session-clock")) && (
+        <div className="grid-2-1">
+          {v("equity-curve") && <EquityCurveCard points={equity} />}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
+            {v("risk-gauge") && <RiskGauge />}
+            {v("margin-call") && <MarginCallCard />}
+            {v("session-clock") && <SessionClock />}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "var(--density-gap)" }}>
-        <PlaybooksCard playbooks={playbooks} />
-        <CalendarCard events={events} />
-      </div>
+      {v("live-pnl") && <LivePnlStrip />}
+
+      {v("open-positions") && <OpenPositions trades={openTrades} />}
+
+      {v("recent-trades") && <RecentTrades trades={recentTrades} />}
+
+      {showAdvanced && v("analytics-summary") && <AnalyticsSummary stats={stats} pairs={pairs} />}
+
+      {(v("journal-feed") || v("mood-checkin") || v("watchlist")) && (
+        <div className="grid-2-1">
+          {v("journal-feed") && <JournalFeed entries={recentEntries} trades={recentTrades} />}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
+            {v("mood-checkin") && (
+              <MoodCheckIn
+                initialMood={discipline.todayMood as never}
+                rulesFollowedPct={discipline.rulesFollowedPct}
+                streakDays={discipline.streakDays}
+              />
+            )}
+            {v("watchlist") && <WatchlistWidget />}
+          </div>
+        </div>
+      )}
+
+      {(v("playbooks-card") || v("calendar-card")) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "var(--density-gap)" }}>
+          {v("playbooks-card") && <PlaybooksCard playbooks={playbooks} />}
+          {v("calendar-card") && <CalendarCard events={events} />}
+        </div>
+      )}
     </>
   )
 }
