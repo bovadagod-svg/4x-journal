@@ -613,18 +613,21 @@ function LinkedTradeCard({ trade, playbookMap }: { trade: Trade; playbookMap: Ma
 }
 
 function NoLinkCard({ kind }: { kind: EntryKind }) {
+  const copy = (() => {
+    if (kind === "idea") return { title: "Watching setup — no trade yet", sub: "Promote to a live trade when you take it" }
+    if (kind === "session_plan") return { title: "Today's session plan", sub: "Bias, levels, no-trade zones — reconcile at end of day" }
+    return { title: "No trade linked", sub: "Link an existing trade from the Ledger" }
+  })()
+  const iconColor = kind === "session_plan" ? "var(--c-cyan-bright)" : "var(--c-fg-muted)"
+  const icon = kind === "session_plan" ? "book" : "trade"
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, background: "var(--c-bg-elev-2)", border: "1px dashed var(--c-border-strong)", borderRadius: 8, marginBottom: 16 }}>
       <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--c-bg-elev-3)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-        <Icon name="trade" size={14} color="var(--c-fg-muted)" />
+        <Icon name={icon} size={14} color={iconColor} />
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 500 }}>
-          {kind === "idea" ? "Watching setup — no trade yet" : "No trade linked"}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--c-fg-muted)" }}>
-          {kind === "idea" ? "Promote to a live trade when you take it" : "Link an existing trade from the Ledger"}
-        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 500 }}>{copy.title}</div>
+        <div style={{ fontSize: 11, color: "var(--c-fg-muted)" }}>{copy.sub}</div>
       </div>
     </div>
   )

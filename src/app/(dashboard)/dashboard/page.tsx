@@ -24,6 +24,8 @@ import { CalendarCard } from "@/components/dashboard/calendar-card"
 import { MoodCheckIn } from "@/components/dashboard/mood-checkin"
 import { PipStatsCard } from "@/components/dashboard/pip-stats-card"
 import { StreakCard } from "@/components/dashboard/streak-card"
+import { TodayPlanCard } from "@/components/dashboard/today-plan-card"
+import { WeeklyRetrospectiveCard } from "@/components/dashboard/weekly-retrospective-card"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { RangeFilterBar } from "@/components/shell/range-filter-bar"
 import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
@@ -81,7 +83,11 @@ export default async function DashboardPage({
 
       {showAdvanced && <CoachNudge stats={stats} />}
 
+      {showAdvanced && <WeeklyRetrospectiveCard />}
+
       <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />
+
+      <TodayPlanCard />
 
       {showAdvanced && <CorrelationWarning />}
 

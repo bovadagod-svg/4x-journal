@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import { formatUSD, computeR } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
 import type { TradeFill } from "@/lib/queries/trade-fills"
@@ -111,28 +111,19 @@ export function ScaleOutAnalysis({ trades, fillsByTrade }: { trades: Trade[]; fi
 
       {/* Insight banner */}
       {stats.counterfactual != null && stats.scaledTrades >= 3 && (
-        <div style={{
-          padding: 10,
-          background: stats.counterfactual > 0 ? "rgba(17, 196, 88, 0.06)" : "rgba(229, 162, 59, 0.06)",
-          border: `1px solid ${stats.counterfactual > 0 ? "rgba(17, 196, 88, 0.25)" : "rgba(229, 162, 59, 0.25)"}`,
-          borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Icon name={stats.counterfactual > 0 ? "sparkle" : "info"} size={13} color={stats.counterfactual > 0 ? "var(--c-green-bright)" : "var(--c-amber)"} />
-          <span>
-            {stats.counterfactual > 0 ? (
-              <>
-                Scaling out earned <strong style={{ color: "var(--c-green-bright)" }}>+{stats.counterfactual.toFixed(2)}R</strong> more
-                than holding to your original target would have. Booking partials is paying off.
-              </>
-            ) : (
-              <>
-                Holding to original target would have been <strong style={{ color: "var(--c-amber)" }}>{Math.abs(stats.counterfactual).toFixed(2)}R</strong> better
-                than scaling out. Trades have legs you&apos;re not letting run.
-              </>
-            )}
-          </span>
-        </div>
+        <NarrativeBanner tone={stats.counterfactual > 0 ? "good" : "warn"}>
+          {stats.counterfactual > 0 ? (
+            <>
+              Scaling out earned <strong style={{ color: "var(--c-green-bright)" }}>+{stats.counterfactual.toFixed(2)}R</strong> more
+              than holding to your original target would have. Booking partials is paying off.
+            </>
+          ) : (
+            <>
+              Holding to original target would have been <strong style={{ color: "var(--c-amber)" }}>{Math.abs(stats.counterfactual).toFixed(2)}R</strong> better
+              than scaling out. Trades have legs you&apos;re not letting run.
+            </>
+          )}
+        </NarrativeBanner>
       )}
     </div>
   )

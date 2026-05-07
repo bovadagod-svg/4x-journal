@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, useMemo, useState } from "react"
+import Link from "next/link"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { formatLotsOrSize } from "@/lib/lots"
@@ -102,6 +103,25 @@ export function TradeTable({
           <button className="btn" style={{ fontSize: 11.5, padding: "5px 10px", opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
             Add to Playbook
           </button>
+          {selected.size >= 2 && selected.size <= 4 ? (
+            <Link
+              href={`/ledger/compare?trades=${Array.from(selected).join(",")}`}
+              className="btn"
+              style={{ fontSize: 11.5, padding: "5px 10px", color: "var(--c-purple-bright)", borderColor: "rgba(105, 50, 212, 0.4)" }}
+            >
+              <Icon name="external" size={11} /> Compare {selected.size}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled
+              style={{ fontSize: 11.5, padding: "5px 10px", opacity: 0.5, cursor: "not-allowed" }}
+              title={selected.size < 2 ? "Select 2 or more trades to compare" : "Compare supports up to 4 trades at a time"}
+            >
+              <Icon name="external" size={11} /> Compare {selected.size}
+            </button>
+          )}
           <button
             className="btn"
             style={{ fontSize: 11.5, padding: "5px 10px", marginLeft: "auto", color: "var(--c-fg-muted)" }}

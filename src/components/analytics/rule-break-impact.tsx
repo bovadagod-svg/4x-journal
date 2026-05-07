@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Icon } from "@/components/icons"
+import { NarrativeBanner } from "./narrative-banner"
 import { formatUSD } from "@/lib/finance"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 
@@ -75,12 +75,11 @@ export function RuleBreakImpact({ trades, entriesByTrade, prevEntries }: { trade
       </div>
 
       {wrGap != null && wrGap > 5 && stats.broken.count >= 3 && (
-        <div style={{ marginTop: 12, padding: 10, background: "rgba(190, 51, 61, 0.06)", border: "1px solid rgba(190, 51, 61, 0.2)", borderRadius: 8, fontSize: 12, color: "var(--c-fg-muted)", display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon name="flame" size={13} color="var(--c-red-bright)" />
-          <span>
+        <div style={{ marginTop: 12 }}>
+          <NarrativeBanner tone="bad">
             Discipline is worth <strong style={{ color: "var(--c-red-bright)" }}>{Math.round(wrGap)} percentage points</strong> of win rate. The {stats.broken.count} rule-break trade{stats.broken.count === 1 ? " has" : "s have"} cost{" "}
             <strong style={{ color: "var(--c-red-bright)" }}>{formatUSD(Math.abs(stats.broken.pnl < 0 ? stats.broken.pnl : 0))}</strong> directly.
-          </span>
+          </NarrativeBanner>
         </div>
       )}
     </div>

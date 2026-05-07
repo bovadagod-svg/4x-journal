@@ -276,6 +276,55 @@ export async function createEmptyIdeaEntry(): Promise<EntrySaveResult> {
   return { ok: true, id: data.id }
 }
 
+/**
+ * Create an empty session_plan entry for today. Used by the dashboard "Today's
+ * plan" widget when no plan has been created yet for the session.
+ */
+export async function createEmptySessionPlanEntry(): Promise<EntrySaveResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const { data, error } = await supabase
+    .from("journal_entries")
+    .insert({ user_id: user.id, kind: "session_plan" })
+    .select("id")
+    .single()
+  if (error || !data) return { ok: false, error: error?.message ?? "Insert failed" }
+  revalidatePath("/journal")
+  revalidatePath("/dashboard")
+  return { ok: true, id: data.id }
+}
+
+/**
+ * Today's session plan, if one exists. Used by the dashboard widget to decide
+ * whether to render an "Open today's plan" CTA or a "Create today's plan"
+ * prompt. UTC day for now — timezone-aware version is a follow-up.
+ */
+export async function getTodaySessionPlan(): Promise<{
+  id: string
+  pre_trade: string | null
+  tags: string[] | null
+  created_at: string
+} | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const startOfDay = new Date()
+  startOfDay.setUTCHours(0, 0, 0, 0)
+  const { data } = await supabase
+    .from("journal_entries")
+    .select("id, pre_trade, tags, created_at")
+    .eq("user_id", user.id)
+    .eq("kind", "session_plan")
+    .gte("created_at", startOfDay.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
+
 export type ShareTokenResult =
   | { ok: true; token: string | null }
   | { ok: false; error: string }

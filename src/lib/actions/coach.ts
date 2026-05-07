@@ -260,6 +260,162 @@ export async function generateCoachInsights(force = false): Promise<CoachState> 
   return { ok: true, payload, generatedAt, cached: false }
 }
 
+const WEEKLY_RETROSPECTIVE_PROMPT = `You are a Coach AI for a Forex trader, writing the trader's MONDAY MORNING retrospective on the past week. You receive:
+  - the user's last 7 days of closed trades (pair, side, entry, exit, R, P&L, mood, playbook)
+  - the user's journal entries linked to those trades
+
+Output: a JSON object with TWO fields.
+
+  observations[]: 3 short, specific bullets in the form "Last week, X" — what HAPPENED, with citations.
+    - One MUST be a positive (an edge, a discipline win, a setup that paid)
+    - One MUST be a negative (a leak, a tilt episode, a setup that didn't)
+    - Third is your call — most-cited pattern, biggest surprise, etc.
+    - Cite specific numbers ("3 EUR/USD shorts averaged +1.4R" or "all 4 losses came after a prior loss within 30 min")
+
+  suggestions[]: 2-3 prescriptive recommendations in the form "This week, [action]". Each is an object:
+    - action: imperative starting with "This week," ("This week, no shorts on EUR/USD until 5 winners in a row" / "This week, hard cooldown of 30 min after any stop-out")
+    - basis: one-sentence justification with the data
+    - severity: "warn" when the pattern materially hurts P&L; "info" for low-impact nudges
+
+Tone: a coach who has the trader's actual numbers in front of them. Direct, honest, no pep-talk. The trader wants to know what to keep doing and what to stop, not a recap of the week.
+
+Format your response as a single JSON object exactly like:
+{"observations":["Last week, ...","Last week, ...","Last week, ..."],"suggestions":[{"action":"This week, ...","basis":"...","severity":"warn"}]}`
+
+export async function generateWeeklyRetrospective(force = false): Promise<CoachState> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in.", configured: true }
+
+  const { data: settingsRow } = await supabase
+    .from("user_settings")
+    .select("coach_use_ai, coach_cache")
+    .eq("user_id", user.id)
+    .maybeSingle()
+  const useAi = settingsRow?.coach_use_ai !== false
+  const haveKey = !!process.env.ANTHROPIC_API_KEY
+  if (!useAi || !haveKey) {
+    return { ok: false, error: "Weekly retrospective requires Coach AI enabled and ANTHROPIC_API_KEY configured.", configured: haveKey }
+  }
+
+  // Cache key: ISO week (year-Www). Stable for 7 days so re-renders don't burn API.
+  const weekKey = isoWeekKey(new Date())
+  if (!force) {
+    const cache = settingsRow?.coach_cache as { weekly?: { week?: string; payload?: CoachInsightsPayload; generatedAt?: string } } | null
+    const w = cache?.weekly
+    if (w?.week === weekKey && w.payload) {
+      return { ok: true, payload: w.payload, generatedAt: w.generatedAt ?? "", cached: true }
+    }
+  }
+
+  // Pull last 7 days of closed trades + linked entries.
+  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7); sevenDaysAgo.setHours(0, 0, 0, 0)
+  const [{ data: trades }, { data: entries }, { data: playbooks }] = await Promise.all([
+    supabase.from("trades")
+      .select("id, pair, side, entry_price, exit_price, r, pnl, mood, playbook_id, opened_at, closed_at")
+      .eq("status", "closed")
+      .gte("closed_at", sevenDaysAgo.toISOString())
+      .order("closed_at", { ascending: true }),
+    supabase.from("journal_entries")
+      .select("trade_id, pre_trade, post_trade, during_trade, rule_break, rule_break_tags, mistakes")
+      .eq("user_id", user.id)
+      .gte("created_at", sevenDaysAgo.toISOString()),
+    supabase.from("playbooks").select("id, name").eq("user_id", user.id),
+  ])
+
+  if (!trades || trades.length === 0) {
+    return {
+      ok: true,
+      payload: {
+        observations: [
+          "No closed trades last week — nothing to review yet. Either you stayed flat (good discipline if intentional) or you're between cycles.",
+        ],
+        suggestions: [],
+      },
+      generatedAt: new Date().toISOString(),
+      cached: false,
+    }
+  }
+
+  const playbookByID = new Map((playbooks ?? []).map((p) => [p.id, p.name]))
+  const entriesByTradeID = new Map((entries ?? []).map((e) => [e.trade_id, e]))
+  const compactDataset = trades.map((t) => {
+    const e = entriesByTradeID.get(t.id)
+    return {
+      pair: t.pair,
+      side: t.side,
+      entry: t.entry_price,
+      exit: t.exit_price,
+      r: t.r,
+      pnl: t.pnl,
+      mood: t.mood,
+      playbook: t.playbook_id ? playbookByID.get(t.playbook_id) : null,
+      opened: t.opened_at,
+      thesis: e?.pre_trade?.slice(0, 200) ?? null,
+      review: e?.post_trade?.slice(0, 200) ?? null,
+      liveNotes: formatLiveNotes(e?.during_trade) || null,
+      ruleBreak: !!e?.rule_break,
+      ruleBreakTags: e?.rule_break_tags ?? [],
+      mistakes: e?.mistakes ?? [],
+    }
+  })
+
+  let payload: CoachInsightsPayload
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const response = await client.messages.create({
+      model: "claude-3-5-haiku-latest",
+      max_tokens: 800,
+      system: WEEKLY_RETROSPECTIVE_PROMPT,
+      messages: [{ role: "user", content: JSON.stringify(compactDataset) }],
+    })
+    const block = response.content.find((b) => b.type === "text")
+    if (!block || block.type !== "text") return { ok: false, error: "Coach AI returned no text.", configured: true }
+    const match = block.text.match(/\{[\s\S]*\}/)
+    if (!match) return { ok: false, error: "Coach AI didn't return JSON.", configured: true }
+    const parsed = JSON.parse(match[0]) as { observations?: unknown; suggestions?: unknown }
+    const observations = Array.isArray(parsed.observations) ? parsed.observations.filter((o): o is string => typeof o === "string").slice(0, 3) : []
+    const suggestions = Array.isArray(parsed.suggestions)
+      ? (parsed.suggestions as unknown[])
+          .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
+          .map((s) => ({
+            action: String(s.action ?? "").trim(),
+            basis: String(s.basis ?? "").trim(),
+            severity: (s.severity === "warn" ? "warn" : "info") as "warn" | "info",
+          }))
+          .filter((s) => s.action.length > 0)
+          .slice(0, 3)
+      : []
+    payload = { observations, suggestions }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Coach AI request failed.", configured: true }
+  }
+
+  const generatedAt = new Date().toISOString()
+  // Merge into existing coach_cache without clobbering the daily cache.
+  const existing = (settingsRow?.coach_cache ?? {}) as Record<string, unknown>
+  await supabase
+    .from("user_settings")
+    .upsert(
+      { user_id: user.id, coach_cache: { ...existing, weekly: { week: weekKey, payload, generatedAt } } },
+      { onConflict: "user_id" },
+    )
+  revalidatePath("/dashboard")
+  return { ok: true, payload, generatedAt, cached: false }
+}
+
+/**
+ * ISO week key in `YYYY-Www` form. Stable Mon→Sun, used as the weekly cache key.
+ */
+function isoWeekKey(d: Date): string {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+  const dayNum = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86_400_000) + 1) / 7)
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`
+}
+
 /**
  * Compact representation of `journal_entries.during_trade` (an array of
  * `{ts, text}` mid-trade captures) for inclusion in the LLM payload.
