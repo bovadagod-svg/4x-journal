@@ -755,7 +755,7 @@ That's a single full day and the app jumps to "best-in-class trader-grade journa
 
 Items 41–47 lift behavioral + cost analytics out of data we already write to the DB but never aggregate. Zero new schema; just new analytics cards.
 
-### 41. `[ ]` Stop-modify behavioral analytics from `lifecycle_events`
+### 41. `[x]` Stop-modify behavioral analytics from `lifecycle_events`
 
 **Why:** Every TradeLocker `Replaced` event carries the prior + new SL/TP. Aggregating across closed trades reveals "you move stops on losing trades 2.4× more often than on winning trades" — a behavioral signal nobody else's journal exposes because nobody else captures the lifecycle. This is the most original analytic we can ship.
 
@@ -769,7 +769,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 ---
 
-### 42. `[ ]` Slippage aggregate analytics card
+### 42. `[x]` Slippage aggregate analytics card
 
 **Why:** Per-trade slippage badge ships in the drawer (#24). The aggregate ("market orders slip 1.4 pips on avg, costing ~$840/yr at your size; limit fills slip 0.0") is the actionable form. Pairs naturally with Order-Type Edge (#29).
 
@@ -782,7 +782,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 ---
 
-### 43. `[ ]` Fee bleed card (commission + swap + tax)
+### 43. `[x]` Fee bleed card (commission + swap + tax)
 
 **Why:** `commission`, `swap`, `tax` are written per-fill (#22) but never aggregated. Surface YTD spend with a swap-by-day-of-week chart (Wednesday triple-rollover effect). Invisible-cost reveal — high satisfaction.
 
@@ -795,7 +795,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 ---
 
-### 44. `[ ]` Magic-number / `broker_comment` → algo vs manual split
+### 44. `[x]` Magic-number / `broker_comment` → algo vs manual split
 
 **Why:** Many prop traders run partial automation (EA, copy trade, semi-discretionary signals). `magic_number` lets us auto-bucket and run the standard win-rate / expectancy / drawdown breakdowns on each. Most journals can't do this because they don't capture magic numbers.
 
@@ -808,7 +808,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 ---
 
-### 45. `[ ]` Per-partial scale-out ladder
+### 45. `[x]` Per-partial scale-out ladder
 
 **Why:** Existing ScaleOutAnalysis card compares scaled vs. single-exit at the trade level. The next layer down: "Your 1st partial averages +0.8R, your 2nd +0.3R, your 3rd −0.1R" — telling them they scale out too late. Per-fill data is already there.
 
@@ -821,7 +821,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 ---
 
-### 46. `[ ]` Mistakes & rule_break_tags frequency leaderboard
+### 46. `[x]` Mistakes & rule_break_tags frequency leaderboard
 
 **Why:** RuleBreakImpact already shows top tags + top mistakes. Add a *trend*: "'fomo' tagged 8× this month, up from 3× last month." Behavioral compounding is the journal's job.
 
@@ -834,7 +834,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 ---
 
-### 47. `[ ]` Feed `during_trade` live notes into Coach AI
+### 47. `[x]` Feed `during_trade` live notes into Coach AI
 
 **Why:** `journal_entries.during_trade` is a JSONB array of timestamped emotional captures, surfaced beautifully in the journal-view + ledger but ignored by `coach.ts` (only reads pre/post/cold/lessons) and `coach-tag.ts`. These mid-trade notes are the highest-signal text for tilt detection — "moved stop at 14:32 because price was 'choppy'" is exactly the pattern Coach AI should call out.
 
@@ -852,7 +852,7 @@ Items 41–47 lift behavioral + cost analytics out of data we already write to t
 
 Items 48–56 are new analytics that compose off existing data. Most are ~3 hours each.
 
-### 48. `[ ]` Rolling-window edge erosion
+### 48. `[x]` Rolling-window edge erosion
 
 **Why:** Lifetime stats hide decay. A 20- or 50-trade rolling window for WR / expectancy / profit factor reveals when an edge is fading or the market has changed. Pairs with per-playbook view to answer "is my London Breakout still working?"
 
@@ -865,7 +865,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 49. `[ ]` MAE / MFE per trade
+### 49. `[x]` MAE / MFE per trade
 
 **Why:** Maximum Adverse Excursion + Maximum Favorable Excursion is the gold standard "are you cutting winners early or holding losers too long" metric. Polygon plumbing exists from Replay (#32). Backfill MAE/MFE from intraday candles per closed trade; surface "your winners reach +1.8R MFE on average before you close at +0.9R" — the most actionable single number in trader analytics.
 
@@ -880,7 +880,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 50. `[ ]` Recovery / revenge-trade detector
+### 50. `[x]` Recovery / revenge-trade detector
 
 **Why:** Trades opened within N minutes of a loss are statistically worse. Flag them, show baseline-vs-revenge WR. If it's real, expose a soft cooldown rule ("block trade entry within 15 min of a stop-out") — discipline mechanism, not just an analytic.
 
@@ -894,7 +894,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 51. `[ ]` Streak-aware performance
+### 51. `[x]` Streak-aware performance
 
 **Why:** WR after 3 consecutive wins (overconfidence) vs. after 3 losses (tilt). Often shockingly different. Pure aggregation off existing data.
 
@@ -907,7 +907,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 52. `[ ]` Time-in-session granularity (intra-session)
+### 52. `[x]` Time-in-session granularity (intra-session)
 
 **Why:** Existing SessionAnalysis splits London/NY/Asia. Drill in: "8:30–9:30 NY: +2.4R avg (n=18)" vs. "11:00–12:00 NY: −0.8R avg (n=12)." Often reveals a single golden hour.
 
@@ -920,7 +920,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 53. `[ ]` Underwater equity chart
+### 53. `[x]` Underwater equity chart
 
 **Why:** Continuous "%-from-peak" line — psychologically the chart that matters most. Companion to existing DrawdownAnalysis (which probably surfaces max DD). Reveals time spent in drawdown, not just depth.
 
@@ -933,7 +933,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 54. `[ ]` Risk-adjusted metrics card
+### 54. `[x]` Risk-adjusted metrics card
 
 **Why:** Sharpe, Sortino, Calmar, MAR, Ulcer Index. We compute everything they need. Adds quant credibility. Most prop firms publicly track these.
 
@@ -947,7 +947,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 55. `[ ]` Time-to-resolution distribution
+### 55. `[x]` Time-to-resolution distribution
 
 **Why:** Histogram: how long do winners run vs. losers? If losers resolve in 12 min and winners in 4 hours you're doing it right. If reversed, you're cutting winners.
 
@@ -960,7 +960,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 ---
 
-### 56. `[ ]` Drawdown per playbook
+### 56. `[x]` Drawdown per playbook
 
 **Why:** Playbooks card shows P&L/WR/expectancy. Add max-DD-per-playbook so traders see which setups have nasty losing streaks even when lifetime expectancy is fine.
 
@@ -977,7 +977,7 @@ Items 48–56 are new analytics that compose off existing data. Most are ~3 hour
 
 Items 57–61 require small migrations + write-side changes.
 
-### 57. `[ ]` Pre-session journal entry kind
+### 57. `[x]` Pre-session journal entry kind
 
 **Why:** Distinct from per-trade ideas: "Today's plan — bias, levels, no-trade zones, news to avoid." End of day: reconcile to plan. `journal_entries.kind` already accepts arbitrary strings — use `"session_plan"`. Add a Today widget on the dashboard.
 
@@ -992,7 +992,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 58. `[ ]` Hypothetical idea fields (delivers #37's deferred punchline)
+### 58. `[x]` Hypothetical idea fields (delivers #37's deferred punchline)
 
 **Why:** Add `idea_pair`, `idea_side`, `idea_entry`, `idea_stop`, `idea_target` to `journal_entries`. Then ideas-vs-executions can compute "the 5 setups you skipped would have averaged +0.8R" using Polygon historical bars to look up the would-have-been outcome.
 
@@ -1008,7 +1008,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 59. `[ ]` Account "phase" tracking for prop firms
+### 59. `[x]` Account "phase" tracking for prop firms
 
 **Why:** Prop traders are a huge slice of the funded forex market and live on these metrics: eval / verification / funded; payout cadence; days to next payout; current trailing-DD usage.
 
@@ -1023,7 +1023,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 60. `[ ]` Pip-value resolved at trade time
+### 60. `[~]` Pip-value resolved at trade time
 
 **Why:** Pip-value depends on account currency, contract size, and quote currency. Computing it at fill time and storing on `trade_fills` makes every "average pips" analytic currency-correct without ad-hoc downstream conversion.
 
@@ -1056,7 +1056,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ## 🟡 Sprint K — Premium polish
 
-### 62. `[ ]` Equity curve overlays
+### 62. `[x]` Equity curve overlays
 
 **Why:** Equity-curve card is single-line. Premium move: layer faint S&P / DXY benchmark, color the line by session, mark major drawdowns. The chart is already on the dashboard — make it the visual centerpiece.
 
@@ -1069,7 +1069,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 63. `[ ]` Lite vs Pro dashboard mode
+### 63. `[x]` Lite vs Pro dashboard mode
 
 **Why:** A new user lands on a wall of widgets. A "Lite" preset hides Monte Carlo / Risk-of-Ruin / Margin Projection / Order-Type / Correlation cards by default for users with <50 trades, surfacing them as they're "earned."
 
@@ -1083,7 +1083,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 64. `[ ]` Per-page widget reorder + hide
+### 64. `[~]` Per-page widget reorder + hide
 
 **Why:** Dashboard has 15+ widgets — drag-to-reorder + hide-toggle is a real user need. Persist to user_settings.
 
@@ -1097,7 +1097,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 65. `[ ]` Light mode verification + polish
+### 65. `[x]` Light mode verification + polish
 
 **Why:** Settings has `theme`. Verify a light theme actually renders all SVG analytics cards (candle bodies, gauge fills, equity curves) correctly. Many traders journal in cafes / outdoors and need it.
 
@@ -1110,7 +1110,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 66. `[ ]` Trade comparison view (multi-select)
+### 66. `[x]` Trade comparison view (multi-select)
 
 **Why:** Multi-select 2–4 trades from Ledger → side-by-side diff: replay charts, costs, journal entries, mood. "Why did this win and that lose?" forces real reflection.
 
@@ -1124,7 +1124,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 67. `[ ]` Print stylesheet for Trade Detail Drawer
+### 67. `[x]` Print stylesheet for Trade Detail Drawer
 
 **Why:** Coaching workflows: trader exports a single trade as PDF for a session with a mentor. Reports has print view; extend to drawer.
 
@@ -1138,7 +1138,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 68. `[ ]` Auto-narrative on every analytics card
+### 68. `[x]` Auto-narrative on every analytics card
 
 **Why:** Several cards already auto-narrate (Order-Type, Scale-Out, RuleBreak). Make every analytics card emit a one-line auto-narrative. The narratives are the actual product — the charts are just evidence.
 
@@ -1153,7 +1153,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ## 🔮 Sprint L — Coach AI deepening
 
-### 69. `[ ]` Coach AI agent / chat mode
+### 69. `[x]` Coach AI agent / chat mode
 
 **Why:** Today Coach returns observations + suggestions. Next step: let the user reply ("explain this," "what would changing X do") — turn it into a dialogue against their own data.
 
@@ -1168,7 +1168,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 70. `[ ]` Coach AI weekly retrospective (in-app)
+### 70. `[x]` Coach AI weekly retrospective (in-app)
 
 **Why:** Distinct from the Sunday email digest — a Monday-morning in-app card: "Last week's three things to keep doing, three things to stop." Cached weekly, regenerable.
 
@@ -1197,7 +1197,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 72. `[ ]` Coach AI suggestions → enforceable rules
+### 72. `[~]` Coach AI suggestions → enforceable rules
 
 **Why:** When Coach says "stop shorts on EUR/USD — your edge is statistically negative," offer "Add as a rule" → creates a per-pair-side block on the Log Trade modal. Closes the loop from insight → behavior change.
 
@@ -1285,3 +1285,10 @@ Record decisions to defer or skip items here so the reasoning isn't lost.
 - **2026-05-02** — Items #5, #6, #7 deferred — they need infrastructure (FX rates, R/percent display refactor, sizing cap propagation) that's disproportionate to the visible value. (Subsequently un-deferred and shipped same day per user request.)
 - **2026-05-03** — Items #22–#40 added based on TradeLocker data audit + brainstorm. Sprint A (#22–#25) prioritized first because every downstream analytic gets richer data automatically once those columns exist.
 - **2026-05-06** — Items #41–#77 added from a full-app review. Sprint H (#41–#47) takes priority — pure UI work over data we already capture. Sprint I, J, K, L, M sequenced by ROI vs. effort. Decision: ship Sprint H in this session.
+- **2026-05-06** — Sprint H (#41–47) shipped end-to-end (commit 98ad326). Sprint I (#48 + #50–56) shipped with #49 deferred (commit f2eaaf4). Sprint K (#62, #63, #65, #67, #68) shipped with #64 + #66 deferred (commit 1fdbf3c, fixed by 4ccf00f). Process change: run `npm run build` (not just `tsc --noEmit`) before any commit touching a `"use server"` file — TypeScript doesn't enforce Next's rule that every export from such a file be async, but Turbopack does.
+- **2026-05-07** — Autonomous-mode push (user on mobile, no account access). Shipped 12 of the 13 fully-shippable items in three batches:
+  - **Batch 1** (commit 21c0749): #57 pre-session journal, #66 trade comparison view, #68 NarrativeBanner retrofit on older cards, #70 Coach AI weekly retrospective. No-schema features.
+  - **Batch 2** (commit 999d576): #58 hypothetical idea fields + Polygon resolver, #59 prop-firm phase tracking + dashboard card, #60 pip-value at trade time (backfill action — forward-write integration in TL importer is a follow-up since cron context can't access user fx_rates), #64 widget hide UI (drag-reorder is a follow-up; same JSONB column accommodates `order` field), #49 MAE/MFE backfill + analytics card. 5 additive Supabase migrations applied via MCP.
+  - **Batch 3** (commit d8b67cc): #69 Coach AI chat mode (multi-turn, capped at 20 messages/conversation), #72 trade rules (block_pair_side kind in v1, settings panel + LogTradeModal pre-flight check). 2 new tables with RLS-owner-scoped CRUD.
+  - **Deferred from this session**: #75 social/leaderboard (half-week scope, separate session), #71 voice journal (needs Whisper API key — Anthropic SDK doesn't do audio), #73 mobile native (App Store accounts), #74 backtest (needs more #58 work first), #76 WebSocket (hosted listener), #77 MT4/cTrader (broker partner accounts).
+  - **Partial shipments marked `[~]`**: #60 (forward-write integration follow-up), #64 (drag-reorder follow-up), #72 (Coach-suggestion → rule auto-promotion follow-up).
