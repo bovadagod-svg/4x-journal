@@ -11,8 +11,9 @@ import type { Trade, JournalEntry } from "@/lib/queries/trades"
  * the cost in dollars + win rate gap, then surfaces the most common
  * rule-break tags + mistakes so the user can name what's actually happening.
  */
-export function RuleBreakImpact({ trades, entriesByTrade }: { trades: Trade[]; entriesByTrade: Map<string, JournalEntry> }) {
+export function RuleBreakImpact({ trades, entriesByTrade, prevEntries }: { trades: Trade[]; entriesByTrade: Map<string, JournalEntry>; prevEntries?: JournalEntry[] }) {
   const stats = useMemo(() => compute(trades, entriesByTrade), [trades, entriesByTrade])
+  const prevCounts = useMemo(() => computePrevCounts(prevEntries ?? []), [prevEntries])
 
   if (stats.tagged === 0) {
     return (
@@ -67,10 +68,10 @@ export function RuleBreakImpact({ trades, entriesByTrade }: { trades: Trade[]; e
         />
       </div>
 
-      {/* Top tags + mistakes */}
+      {/* Top tags + mistakes — with trend vs. previous period when available */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <TagList title="Top rule-break tags" tags={stats.topRuleBreakTags} emptyText="No tags logged on rule-break entries." />
-        <TagList title="Top mistakes (all entries)" tags={stats.topMistakes} emptyText="No mistakes logged." />
+        <TagList title="Top rule-break tags" tags={stats.topRuleBreakTags} prev={prevCounts.tags} emptyText="No tags logged on rule-break entries." />
+        <TagList title="Top mistakes (all entries)" tags={stats.topMistakes} prev={prevCounts.mistakes} emptyText="No mistakes logged." />
       </div>
 
       {wrGap != null && wrGap > 5 && stats.broken.count >= 3 && (
@@ -96,7 +97,14 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub:
   )
 }
 
-function TagList({ title, tags, emptyText }: { title: string; tags: { tag: string; count: number }[]; emptyText: string }) {
+function TagList({
+  title, tags, prev, emptyText,
+}: {
+  title: string
+  tags: { tag: string; count: number }[]
+  prev?: Map<string, number>
+  emptyText: string
+}) {
   return (
     <div>
       <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>{title}</div>
@@ -104,25 +112,69 @@ function TagList({ title, tags, emptyText }: { title: string; tags: { tag: strin
         <div style={{ fontSize: 11.5, color: "var(--c-fg-dim)", padding: "8px 0" }}>{emptyText}</div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {tags.map((t) => (
-            <span
-              key={t.tag}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 4,
-                padding: "2px 8px", borderRadius: 999,
-                fontSize: 10.5,
-                background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)",
-                color: "var(--c-fg-muted)",
-              }}
-            >
-              <span style={{ color: "var(--c-fg)" }}>{t.tag}</span>
-              <span className="tnum" style={{ fontSize: 10, color: "var(--c-fg-dim)" }}>×{t.count}</span>
-            </span>
-          ))}
+          {tags.map((t) => {
+            const prior = prev?.get(t.tag)
+            const trend = trendChip(t.count, prior)
+            return (
+              <span
+                key={t.tag}
+                title={prior != null ? `${t.count} this period · ${prior} previous period` : `${t.count} this period · no previous data`}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "2px 8px", borderRadius: 999,
+                  fontSize: 10.5,
+                  background: "var(--c-bg-elev-2)", border: "1px solid var(--c-border)",
+                  color: "var(--c-fg-muted)",
+                }}
+              >
+                <span style={{ color: "var(--c-fg)" }}>{t.tag}</span>
+                <span className="tnum" style={{ fontSize: 10, color: "var(--c-fg-dim)" }}>×{t.count}</span>
+                {trend && (
+                  <span style={{ fontSize: 9.5, color: trend.color, marginLeft: 2 }}>
+                    {trend.symbol}{trend.label}
+                  </span>
+                )}
+              </span>
+            )
+          })}
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * Period-over-period change pill. Hidden when no prior data, when both periods
+ * are equal, or when the prior bucket exists with count 0 (then it's a "new"
+ * tag — show ↑ NEW). Up = bad (more rule breaks); down = good (improvement).
+ */
+function trendChip(curr: number, prev: number | undefined): { symbol: string; label: string; color: string } | null {
+  if (prev == null) return null
+  if (prev === 0 && curr > 0) {
+    return { symbol: "↑", label: " new", color: "var(--c-amber)" }
+  }
+  if (prev === curr) return null
+  const delta = curr - prev
+  if (delta > 0) {
+    return { symbol: "↑", label: `${delta}`, color: "var(--c-red-bright)" }
+  }
+  return { symbol: "↓", label: `${Math.abs(delta)}`, color: "var(--c-green-bright)" }
+}
+
+function computePrevCounts(prevEntries: JournalEntry[]): { tags: Map<string, number>; mistakes: Map<string, number> } {
+  const tags = new Map<string, number>()
+  const mistakes = new Map<string, number>()
+  for (const e of prevEntries) {
+    if (e.rule_break) {
+      for (const tag of e.rule_break_tags ?? []) {
+        tags.set(tag, (tags.get(tag) ?? 0) + 1)
+      }
+    }
+    for (const m of e.mistakes ?? []) {
+      mistakes.set(m, (mistakes.get(m) ?? 0) + 1)
+    }
+  }
+  return { tags, mistakes }
 }
 
 function compute(trades: Trade[], entriesByTrade: Map<string, JournalEntry>) {

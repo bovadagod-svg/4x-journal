@@ -114,7 +114,7 @@ export async function generateCoachInsights(force = false): Promise<CoachState> 
       .gte("closed_at", thirtyDaysAgo.toISOString())
       .order("closed_at", { ascending: true }),
     supabase.from("journal_entries")
-      .select("trade_id, pre_trade, post_trade, rule_break, rule_break_tags, mistakes")
+      .select("trade_id, pre_trade, post_trade, during_trade, rule_break, rule_break_tags, mistakes")
       .eq("user_id", user.id)
       .gte("created_at", thirtyDaysAgo.toISOString()),
     supabase.from("playbooks").select("id, name").eq("user_id", user.id),
@@ -152,6 +152,9 @@ export async function generateCoachInsights(force = false): Promise<CoachState> 
       opened: t.opened_at,
       thesis: e?.pre_trade?.slice(0, 200) ?? null,
       review: e?.post_trade?.slice(0, 200) ?? null,
+      // Mid-trade emotional captures — highest-signal text for tilt detection.
+      // Format `[HH:MM] text` so the LLM can reason about timing.
+      liveNotes: formatLiveNotes(e?.during_trade) || null,
       ruleBreak: !!e?.rule_break,
       ruleBreakTags: e?.rule_break_tags ?? [],
       mistakes: e?.mistakes ?? [],
@@ -255,4 +258,31 @@ export async function generateCoachInsights(force = false): Promise<CoachState> 
 
   revalidatePath("/dashboard")
   return { ok: true, payload, generatedAt, cached: false }
+}
+
+/**
+ * Compact representation of `journal_entries.during_trade` (an array of
+ * `{ts, text}` mid-trade captures) for inclusion in the LLM payload.
+ * Capped at 300 chars total — these notes are the highest-signal text for
+ * tilt detection ("moved stop at 14:32 because price was 'choppy'") so
+ * we want the model to see them, but we don't want to balloon the prompt.
+ */
+function formatLiveNotes(raw: unknown): string {
+  if (!Array.isArray(raw) || raw.length === 0) return ""
+  const parts: string[] = []
+  let used = 0
+  const max = 300
+  for (const note of raw) {
+    if (typeof note !== "object" || note === null) continue
+    const n = note as { ts?: unknown; text?: unknown }
+    const text = typeof n.text === "string" ? n.text.trim() : ""
+    if (!text) continue
+    const ts = typeof n.ts === "string" ? n.ts : null
+    const time = ts ? new Date(ts).toISOString().slice(11, 16) : "—:—"
+    const line = `[${time}] ${text}`
+    if (used + line.length + 1 > max) break
+    parts.push(line)
+    used += line.length + 1
+  }
+  return parts.join(" · ")
 }

@@ -20,9 +20,14 @@ export default async function AnalyticsPage({
   const range = parseRangeSelection({ range: params.range, from: params.from, to: params.to })
   const { from: fromIso, to: toIso } = rangeBoundsIso(range)
 
-  const [trades, entries, playbooks, accounts] = await Promise.all([
+  // Previous-period bounds for trend comparisons (rule-break leaderboard, etc.).
+  // For "All" range there is no previous window — comparisons hide.
+  const prev = previousPeriodIso(fromIso, toIso)
+
+  const [trades, entries, prevEntries, playbooks, accounts] = await Promise.all([
     getUserTrades({ limit: 5000, from: fromIso, to: toIso }),
     getJournalEntries({ limit: 5000, from: fromIso, to: toIso }),
+    prev ? getJournalEntries({ limit: 5000, from: prev.from, to: prev.to }) : Promise.resolve([]),
     getUserPlaybooks(),
     getUserAccounts(),
   ])
@@ -83,6 +88,7 @@ export default async function AnalyticsPage({
       <AnalyticsView
         trades={trades}
         entriesByTrade={entriesByTrade}
+        prevEntries={prevEntries}
         playbookMap={playbookMap}
         accountMap={accountMap}
         fillsByTrade={fillsByTrade}
@@ -90,4 +96,21 @@ export default async function AnalyticsPage({
       />
     </>
   )
+}
+
+/**
+ * Previous equivalent window for trend deltas. Bumps the bounds back by the
+ * window length: 30D current → days 31–60 prior. Returns null for "All-time"
+ * (no comparison possible) or when bounds are absent.
+ */
+function previousPeriodIso(fromIso: string | null, toIso: string | null): { from: string; to: string } | null {
+  if (!fromIso) return null
+  const fromMs = new Date(fromIso).getTime()
+  const toMs = toIso ? new Date(toIso).getTime() : Date.now()
+  const span = toMs - fromMs
+  if (span <= 0) return null
+  return {
+    from: new Date(fromMs - span).toISOString(),
+    to: new Date(fromMs).toISOString(),
+  }
 }

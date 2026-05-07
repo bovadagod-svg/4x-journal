@@ -61,12 +61,16 @@ export async function suggestEntryTags(entryId: string): Promise<CoachTagResult>
 
   const { data: entry } = await supabase
     .from("journal_entries")
-    .select("pre_trade, post_trade, cold_review, lessons, user_id")
+    .select("pre_trade, post_trade, during_trade, cold_review, lessons, user_id")
     .eq("id", entryId)
     .maybeSingle()
   if (!entry || entry.user_id !== user.id) return { ok: false, error: "Entry not found.", configured: true }
 
-  const text = [entry.pre_trade, entry.post_trade, entry.cold_review, entry.lessons]
+  // Mid-trade notes are gold for the tagger — that's where tilt/fomo/hesitation
+  // language actually appears. Concatenate them as `[HH:MM] text` lines after
+  // the rest of the prose so tilt patterns show up in the tagging input.
+  const liveNotes = formatLiveNotesForTagger(entry.during_trade)
+  const text = [entry.pre_trade, entry.post_trade, entry.cold_review, entry.lessons, liveNotes]
     .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     .join("\n\n")
     .slice(0, 4000)
@@ -105,4 +109,24 @@ export async function suggestEntryTags(entryId: string): Promise<CoachTagResult>
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Coach AI request failed.", configured: true }
   }
+}
+
+/**
+ * Flatten `journal_entries.during_trade` into a "Live notes:" section the
+ * tagger can scan. Empty when no notes (so the join skips it cleanly).
+ */
+function formatLiveNotesForTagger(raw: unknown): string {
+  if (!Array.isArray(raw) || raw.length === 0) return ""
+  const lines: string[] = []
+  for (const note of raw) {
+    if (typeof note !== "object" || note === null) continue
+    const n = note as { ts?: unknown; text?: unknown }
+    const text = typeof n.text === "string" ? n.text.trim() : ""
+    if (!text) continue
+    const ts = typeof n.ts === "string" ? n.ts : null
+    const time = ts ? new Date(ts).toISOString().slice(11, 16) : "—:—"
+    lines.push(`[${time}] ${text}`)
+  }
+  if (lines.length === 0) return ""
+  return `Live notes during trade:\n${lines.join("\n")}`
 }

@@ -92,6 +92,23 @@ export function ScaleOutAnalysis({ trades, fillsByTrade }: { trades: Trade[]; fi
         />
       </div>
 
+      {/* Per-position ladder — only renders when ≥1 position bucket has ≥3 samples. */}
+      {stats.ladder.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+            Median R per partial position
+          </div>
+          <PartialLadder rungs={stats.ladder} />
+          {stats.ladderNarrative && (
+            <div style={{
+              marginTop: 8, fontSize: 11.5, color: "var(--c-fg-muted)", lineHeight: 1.5,
+            }}>
+              {stats.ladderNarrative}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Insight banner */}
       {stats.counterfactual != null && stats.scaledTrades >= 3 && (
         <div style={{
@@ -156,6 +173,43 @@ function Sub({ label, value, color }: { label: string; value: string; color?: st
   )
 }
 
+type LadderRung = { position: number; medianR: number; sampleCount: number }
+
+function PartialLadder({ rungs }: { rungs: LadderRung[] }) {
+  const max = Math.max(...rungs.map((r) => Math.abs(r.medianR)), 0.5)
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${rungs.length}, 1fr)`, gap: 10 }}>
+      {rungs.map((r) => {
+        const pct = Math.round((Math.abs(r.medianR) / max) * 100)
+        const color = r.medianR >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"
+        return (
+          <div key={r.position} style={{ background: "var(--c-bg-elev-2)", borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Partial {ordinal(r.position)}
+            </div>
+            <div className="tnum" style={{ fontSize: 16, fontWeight: 600, color, marginTop: 4 }}>
+              {r.medianR > 0 ? "+" : ""}{r.medianR.toFixed(2)}R
+            </div>
+            <div style={{ marginTop: 6, height: 4, background: "var(--c-bg-elev-3)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: color }} />
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", marginTop: 4 }}>
+              n={r.sampleCount}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ordinal(n: number): string {
+  // 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th", etc.
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
 function compute(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>) {
   const closed = trades.filter((t) => t.status === "closed")
   const single: Trade[] = []
@@ -163,6 +217,8 @@ function compute(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>) {
   const firstFillRs: number[] = []
   const runnerRs: number[] = []
   const counterfactualDiffs: number[] = []
+  // Per-exit-position R samples. perPositionRs[0] = first exit, [1] = second, etc.
+  const perPositionRs: number[][] = []
 
   for (const t of closed) {
     const fills = fillsByTrade.get(t.id) ?? []
@@ -184,6 +240,19 @@ function compute(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>) {
       if (firstR != null) firstFillRs.push(firstR)
       if (runnerR != null) runnerRs.push(runnerR)
 
+      // Per-position R for the ladder: bucket each exit's R by its order
+      // (1st partial, 2nd, 3rd, …). We restrict to trades with ≥3 exits later
+      // when filtering the ladder so the "1st partial" rung doesn't get
+      // dominated by 2-exit trades.
+      if (sortedExits.length >= 3) {
+        for (let i = 0; i < sortedExits.length; i++) {
+          const r = computeR({ side, entry, stop, exit: Number(sortedExits[i].price) })
+          if (r == null) continue
+          if (!perPositionRs[i]) perPositionRs[i] = []
+          perPositionRs[i].push(r)
+        }
+      }
+
       // Counterfactual: if we'd held the entire size to the target, what would
       // realized R have been? (Computed per-trade, then we sum the diff vs
       // actual R.)
@@ -201,6 +270,28 @@ function compute(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>) {
 
   const avg = (arr: number[]) => arr.length === 0 ? null : arr.reduce((s, x) => s + x, 0) / arr.length
 
+  // Build the ladder: only include positions with ≥3 samples so the median is meaningful.
+  const ladder: LadderRung[] = perPositionRs
+    .map((rs, i) => ({ position: i + 1, samples: rs }))
+    .filter((r) => r.samples.length >= 3)
+    .map((r) => {
+      const sorted = [...r.samples].sort((a, b) => a - b)
+      const median = sorted[Math.floor(sorted.length / 2)]
+      return { position: r.position, medianR: Number(median.toFixed(2)), sampleCount: r.samples.length }
+    })
+
+  let ladderNarrative: string | null = null
+  if (ladder.length >= 2) {
+    const first = ladder[0]
+    const last = ladder[ladder.length - 1]
+    const drop = first.medianR - last.medianR
+    if (drop >= 0.4) {
+      ladderNarrative = `Each subsequent partial gives back R — your 1st partial books +${first.medianR.toFixed(2)}R but by the ${ordinal(last.position)} you're at ${last.medianR > 0 ? "+" : ""}${last.medianR.toFixed(2)}R. Either you're scaling out too late or letting the runner give back what the early partials banked.`
+    } else if (last.medianR > first.medianR + 0.3) {
+      ladderNarrative = `Your runners earn more R than your early partials (${last.medianR.toFixed(2)}R vs. ${first.medianR.toFixed(2)}R median). Trades have legs — consider taking the first partial smaller and giving the rest more room.`
+    }
+  }
+
   return {
     totalClosed: closed.length,
     scaledTrades: scaled.length,
@@ -210,6 +301,8 @@ function compute(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>) {
     counterfactual: avg(counterfactualDiffs), // positive = scaling beat hold; negative = hold would have beat
     single: groupAgg(single),
     scaled: groupAgg(scaled),
+    ladder,
+    ladderNarrative,
   }
 }
 

@@ -15,6 +15,9 @@ import { PairSideMatrix } from "./pair-side-matrix"
 import { RuleBreakImpact } from "./rule-break-impact"
 import { CalendarHeatmap } from "./calendar-heatmap"
 import { ScaleOutAnalysis } from "./scale-out-analysis"
+import { StopModifyBehavior } from "./stop-modify-behavior"
+import { SlippageAnalysis } from "./slippage-analysis"
+import { FeeBleed } from "./fee-bleed"
 import { RiskOfRuinCard } from "./risk-of-ruin-card"
 import { MonteCarloCard } from "./monte-carlo-card"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
@@ -23,6 +26,7 @@ import type { TradeFill } from "@/lib/queries/trade-fills"
 export function AnalyticsView({
   trades,
   entriesByTrade,
+  prevEntries,
   playbookMap,
   accountMap,
   fillsByTrade,
@@ -30,6 +34,7 @@ export function AnalyticsView({
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
+  prevEntries?: JournalEntry[]
   playbookMap: Map<string, string>
   accountMap: Map<string, string>
   fillsByTrade: Map<string, TradeFill[]>
@@ -59,6 +64,9 @@ export function AnalyticsView({
       {/* Stop-Loss & Take-Profit deep dive */}
       <StopTargetAnalysis trades={filtered} />
 
+      {/* Stop-modify behavior — needs broker lifecycle_events */}
+      <StopModifyBehavior trades={filtered} />
+
       {/* Scale-out analysis — relies on trade_fills */}
       <ScaleOutAnalysis trades={filtered} fillsByTrade={fillsByTrade} />
 
@@ -84,7 +92,7 @@ export function AnalyticsView({
       <PairSideMatrix trades={filtered} />
 
       {/* Rule-break impact (uses journal entries) */}
-      <RuleBreakImpact trades={filtered} entriesByTrade={entriesByTrade} />
+      <RuleBreakImpact trades={filtered} entriesByTrade={entriesByTrade} prevEntries={prevEntries} />
 
       {/* Monthly comparison — respects the range; widen to All for lifetime view */}
       <MonthlyComparison trades={filtered} />
@@ -106,6 +114,15 @@ export function AnalyticsView({
 
       {/* Order-type breakdown — needs broker-synced order_type on entry fills */}
       <OrderTypeBreakdown trades={filtered} fillsByTrade={fillsByTrade} />
+
+      {/* Algo (magic number) vs manual — only renders when broker carried magic numbers */}
+      <AlgoVsManualBreakdown trades={filtered} fillsByTrade={fillsByTrade} />
+
+      {/* Slippage analysis — needs broker-synced request_price on fills */}
+      <SlippageAnalysis trades={filtered} fillsByTrade={fillsByTrade} />
+
+      {/* Fee bleed — commission/swap/tax aggregate, swap by day-of-week */}
+      <FeeBleed fillsByTrade={fillsByTrade} />
 
       {/* Day-of-week × hour heatmap */}
       <DayHourGrid trades={filtered} />
@@ -336,6 +353,35 @@ function OrderTypeBreakdown({
     <BreakdownBars
       title="By Order Type"
       subtitle={narrative ?? "Market vs limit vs stop edge — patience pays"}
+      groups={groups}
+    />
+  )
+}
+
+// ── Algo vs Manual breakdown ──────────────────────────────────────────────
+// Buckets trades by entry-fill magic_number. Manual = null / "0" / "". Each
+// non-trivial magic_number gets its own bucket (label "EA #<number>") so users
+// running multiple EAs see them separately. Hides until ≥1 algo bucket exists,
+// since the all-manual case duplicates the lifetime KPIs above.
+function AlgoVsManualBreakdown({
+  trades, fillsByTrade,
+}: {
+  trades: Trade[]
+  fillsByTrade: Map<string, TradeFill[]>
+}) {
+  const groups = useMemo(() => byMagicNumber(trades, fillsByTrade), [trades, fillsByTrade])
+  const algoGroups = groups.filter((g) => g.name !== "Manual")
+  const totalTagged = groups.reduce((s, g) => s + g.count, 0)
+
+  // Hide entirely when nothing is algo-tagged — the breakdown adds no signal
+  // for a 100%-manual trader.
+  if (algoGroups.length === 0 || totalTagged < 5) return null
+
+  const narrative = algoVsManualNarrative(groups)
+  return (
+    <BreakdownBars
+      title="Algo vs Manual"
+      subtitle={narrative ?? "Discretionary trades vs. automated entries (by broker magic number)"}
       groups={groups}
     />
   )
@@ -665,6 +711,44 @@ function orderTypeNarrative(groups: BreakdownGroup[]): string | null {
   if (delta < 10) return null
   const note = best.name === "Limit" && worst.name === "Market" ? " Be patient." : ""
   return `Your ${best.name.toLowerCase()} fills win ${Math.round(best.winRate)}% — your ${worst.name.toLowerCase()} fills win ${Math.round(worst.winRate)}%.${note}`
+}
+
+function byMagicNumber(trades: Trade[], fillsByTrade: Map<string, TradeFill[]>): BreakdownGroup[] {
+  const map = new Map<string, Trade[]>()
+  for (const t of trades) {
+    const fills = fillsByTrade.get(t.id) ?? []
+    const entryFill = fills.find((f) => f.kind === "entry") ?? null
+    const raw = entryFill?.magic_number?.trim() ?? ""
+    const isManual = raw === "" || raw === "0"
+    const bucket = isManual ? "Manual" : `EA #${raw}`
+    const arr = map.get(bucket) ?? []
+    arr.push(t)
+    map.set(bucket, arr)
+  }
+  // Manual first, then EAs sorted by trade count descending (most-active EA first).
+  const manual = map.has("Manual") ? [{ name: "Manual", ...aggGroup(map.get("Manual")!) }] : []
+  const eas = Array.from(map.entries())
+    .filter(([k]) => k !== "Manual")
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([name, ts]) => ({ name, ...aggGroup(ts) }))
+  return [...manual, ...eas]
+}
+
+function algoVsManualNarrative(groups: BreakdownGroup[]): string | null {
+  const manual = groups.find((g) => g.name === "Manual")
+  const algos = groups.filter((g) => g.name !== "Manual")
+  if (algos.length === 0) return null
+  // Compare best EA to manual, both need ≥3 trades to be worth a callout.
+  const bestAlgo = [...algos].sort((a, b) => b.expectancy - a.expectancy)[0]
+  if (bestAlgo.count < 3) return null
+  if (!manual || manual.count < 3) {
+    return `${bestAlgo.name}: ${Math.round(bestAlgo.winRate)}% WR over ${bestAlgo.count} trades. No manual baseline yet for comparison.`
+  }
+  const wrGap = bestAlgo.winRate - manual.winRate
+  if (Math.abs(wrGap) < 8) return null
+  const winner = wrGap > 0 ? bestAlgo : manual
+  const loser = wrGap > 0 ? manual : bestAlgo
+  return `${winner.name} (${Math.round(winner.winRate)}% WR, ${winner.count} trades) is beating ${loser.name} (${Math.round(loser.winRate)}%) by ${Math.round(Math.abs(wrGap))}pp. Worth concentrating size where the edge actually is.`
 }
 
 function aggGroup(ts: Trade[]) {

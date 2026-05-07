@@ -751,6 +751,532 @@ That's a single full day and the app jumps to "best-in-class trader-grade journa
 
 ---
 
+## 🟠 Sprint H — Surface broker depth we already capture
+
+Items 41–47 lift behavioral + cost analytics out of data we already write to the DB but never aggregate. Zero new schema; just new analytics cards.
+
+### 41. `[ ]` Stop-modify behavioral analytics from `lifecycle_events`
+
+**Why:** Every TradeLocker `Replaced` event carries the prior + new SL/TP. Aggregating across closed trades reveals "you move stops on losing trades 2.4× more often than on winning trades" — a behavioral signal nobody else's journal exposes because nobody else captures the lifecycle. This is the most original analytic we can ship.
+
+**Files (new):**
+- `src/components/analytics/stop-modify-behavior.tsx` — new card; reads `trades.lifecycle_events`, classifies SL moves (BE / trail / loosened) and TP moves (wider / tighter), buckets by trade outcome (winner / loser), surfaces frequency + size per bucket
+- Slot in `src/components/analytics/analytics-view.tsx` between StopTargetAnalysis and ScaleOutAnalysis
+
+**Acceptance:** With ≥10 closed TL-synced trades that have at least one SL or TP modify, the card shows: (a) modify counts split winner vs. loser, (b) the top 1 narrative when the gap is ≥2× ("You move stops 2.4× more often on losers — classic hope-trading"), (c) hides cleanly for users with no modify events.
+
+**Effort:** ~2.5 hours
+
+---
+
+### 42. `[ ]` Slippage aggregate analytics card
+
+**Why:** Per-trade slippage badge ships in the drawer (#24). The aggregate ("market orders slip 1.4 pips on avg, costing ~$840/yr at your size; limit fills slip 0.0") is the actionable form. Pairs naturally with Order-Type Edge (#29).
+
+**Files (new):**
+- `src/components/analytics/slippage-analysis.tsx` — reads `trade_fills` with non-null `request_price`, computes pip-slippage per fill (sign-aware vs. side), splits by order_type, dollarizes via fill size
+
+**Acceptance:** With ≥5 fills carrying `request_price`, card shows median + mean slippage per order_type bucket plus a dollar estimate. Hides when no broker-synced trades have request_price.
+
+**Effort:** ~2 hours
+
+---
+
+### 43. `[ ]` Fee bleed card (commission + swap + tax)
+
+**Why:** `commission`, `swap`, `tax` are written per-fill (#22) but never aggregated. Surface YTD spend with a swap-by-day-of-week chart (Wednesday triple-rollover effect). Invisible-cost reveal — high satisfaction.
+
+**Files (new):**
+- `src/components/analytics/fee-bleed.tsx` — sums commission/swap/tax across fills in range, optional weekday-rollover breakdown for swap
+
+**Acceptance:** With ≥30 days of TL-synced data, card shows total commission, total swap, total tax, plus a "swap by day-of-week" mini-bar visualizing the Wed rollover spike. Hides when all three sums are zero.
+
+**Effort:** ~2 hours
+
+---
+
+### 44. `[ ]` Magic-number / `broker_comment` → algo vs manual split
+
+**Why:** Many prop traders run partial automation (EA, copy trade, semi-discretionary signals). `magic_number` lets us auto-bucket and run the standard win-rate / expectancy / drawdown breakdowns on each. Most journals can't do this because they don't capture magic numbers.
+
+**Files (new):**
+- `src/components/analytics/algo-vs-manual.tsx` — looks at primary entry fill's `magic_number`; bucket = "Manual" when null/0, otherwise grouped by magic-number value (with optional rename map in user_settings — out of scope for v1)
+
+**Acceptance:** With trades that mix magic_number values, card shows side-by-side WR/expectancy/avg-R per bucket. With all-manual trades, hides cleanly.
+
+**Effort:** ~1.5 hours
+
+---
+
+### 45. `[ ]` Per-partial scale-out ladder
+
+**Why:** Existing ScaleOutAnalysis card compares scaled vs. single-exit at the trade level. The next layer down: "Your 1st partial averages +0.8R, your 2nd +0.3R, your 3rd −0.1R" — telling them they scale out too late. Per-fill data is already there.
+
+**Files:**
+- Extend `src/components/analytics/scale-out-analysis.tsx` — add a "Partial ladder" sub-section under the existing KPI strip; for trades with ≥3 exits, compute median R at exit-position 1, 2, 3, …, render as a small bar chart
+
+**Acceptance:** With ≥5 trades that have 3+ exits, ladder section appears below existing KPIs showing the per-position median R. Hides when not enough multi-partial trades.
+
+**Effort:** ~2 hours
+
+---
+
+### 46. `[ ]` Mistakes & rule_break_tags frequency leaderboard
+
+**Why:** RuleBreakImpact already shows top tags + top mistakes. Add a *trend*: "'fomo' tagged 8× this month, up from 3× last month." Behavioral compounding is the journal's job.
+
+**Files:**
+- Extend `src/components/analytics/rule-break-impact.tsx` — add a "Trend vs. previous period" cell on each top-N tag/mistake; needs prev-period entry counts (compute against `trades` filtered by the prior equivalent window)
+
+**Acceptance:** With ≥30 days of journal entries, each top tag pill shows its previous-period count + delta arrow. Hides arrow when previous period was empty.
+
+**Effort:** ~2 hours
+
+---
+
+### 47. `[ ]` Feed `during_trade` live notes into Coach AI
+
+**Why:** `journal_entries.during_trade` is a JSONB array of timestamped emotional captures, surfaced beautifully in the journal-view + ledger but ignored by `coach.ts` (only reads pre/post/cold/lessons) and `coach-tag.ts`. These mid-trade notes are the highest-signal text for tilt detection — "moved stop at 14:32 because price was 'choppy'" is exactly the pattern Coach AI should call out.
+
+**Files:**
+- `src/lib/actions/coach.ts` — `.select(...)` add `during_trade`; build a compact join of `[ts] text` entries (≤300 chars) into the per-trade payload alongside thesis/review
+- `src/lib/actions/coach-tag.ts` — same; concat during-trade text into the prose blob fed to the tagger
+
+**Acceptance:** With a journal entry that has 2+ during-trade notes, the next Coach refresh cites at least one of them in an observation or suggestion (verifiable by inspecting the cached `coach_cache` payload). Tagger output reflects mid-trade sentiment.
+
+**Effort:** ~1 hour
+
+---
+
+## 🟢 Sprint I — Trader analytics worth adding
+
+Items 48–56 are new analytics that compose off existing data. Most are ~3 hours each.
+
+### 48. `[ ]` Rolling-window edge erosion
+
+**Why:** Lifetime stats hide decay. A 20- or 50-trade rolling window for WR / expectancy / profit factor reveals when an edge is fading or the market has changed. Pairs with per-playbook view to answer "is my London Breakout still working?"
+
+**Files (new):**
+- `src/components/analytics/edge-erosion.tsx` — line chart of rolling WR + rolling expectancy over the last N trades (slider for window size 10/20/50)
+
+**Acceptance:** With ≥30 closed trades, chart shows two overlaid lines (WR % left axis, expectancy right axis). Sliding the window updates both lines.
+
+**Effort:** ~3 hours
+
+---
+
+### 49. `[ ]` MAE / MFE per trade
+
+**Why:** Maximum Adverse Excursion + Maximum Favorable Excursion is the gold standard "are you cutting winners early or holding losers too long" metric. Polygon plumbing exists from Replay (#32). Backfill MAE/MFE from intraday candles per closed trade; surface "your winners reach +1.8R MFE on average before you close at +0.9R" — the most actionable single number in trader analytics.
+
+**Files (new):**
+- Migration `trades_mae_mfe`: add `mae_price`, `mfe_price`, `mae_r`, `mfe_r` numerics
+- `src/lib/actions/mae-mfe-backfill.ts` — server action that fetches trade-window candles via existing `getAggregates`, computes min/max during the trade window, persists to columns
+- `src/components/analytics/mae-mfe-card.tsx` — Analytics card with the headline narrative + a scatter (MFE on y, realized R on x) so winners cut early visually pop
+
+**Acceptance:** Backfill action populates columns for closed trades whose pair is on the user's Polygon plan. Card shows realized vs. MFE gap with numeric narrative. Hides when 0 trades have MFE populated.
+
+**Effort:** ~half day
+
+---
+
+### 50. `[ ]` Recovery / revenge-trade detector
+
+**Why:** Trades opened within N minutes of a loss are statistically worse. Flag them, show baseline-vs-revenge WR. If it's real, expose a soft cooldown rule ("block trade entry within 15 min of a stop-out") — discipline mechanism, not just an analytic.
+
+**Files (new):**
+- `src/components/analytics/revenge-detector.tsx` — counts trades opened within configurable T after a loss; compares WR / expectancy vs. baseline
+- `src/components/trades/log-trade-modal.tsx` — optional confirm() guard when `tilt_cooldown_after_loss_minutes` is set in user_settings (new column)
+
+**Acceptance:** With ≥10 closed trades including ≥3 trades opened within 15 min of a prior loss, card shows the WR delta. With cooldown set, attempting a same-account trade inside the window fires a soft confirm.
+
+**Effort:** ~3 hours
+
+---
+
+### 51. `[ ]` Streak-aware performance
+
+**Why:** WR after 3 consecutive wins (overconfidence) vs. after 3 losses (tilt). Often shockingly different. Pure aggregation off existing data.
+
+**Files (new):**
+- `src/components/analytics/streak-aware-perf.tsx` — table: "after 3 wins: 42% WR (n=18) · baseline 54% · −12pp gap"; same for after 3 losses
+
+**Acceptance:** With ≥30 closed trades chronologically, card surfaces the after-streak WR + delta. Hides when no streaks of length ≥3 exist.
+
+**Effort:** ~2 hours
+
+---
+
+### 52. `[ ]` Time-in-session granularity (intra-session)
+
+**Why:** Existing SessionAnalysis splits London/NY/Asia. Drill in: "8:30–9:30 NY: +2.4R avg (n=18)" vs. "11:00–12:00 NY: −0.8R avg (n=12)." Often reveals a single golden hour.
+
+**Files:**
+- Extend `src/components/analytics/session-analysis.tsx` — click a session pill → expands a per-hour bar chart; or render as a sparkline-per-session inline
+
+**Acceptance:** With ≥20 trades in a single session, expanding it shows hour-of-session breakdown sorted by P&L.
+
+**Effort:** ~3 hours
+
+---
+
+### 53. `[ ]` Underwater equity chart
+
+**Why:** Continuous "%-from-peak" line — psychologically the chart that matters most. Companion to existing DrawdownAnalysis (which probably surfaces max DD). Reveals time spent in drawdown, not just depth.
+
+**Files (new):**
+- `src/components/analytics/underwater-curve.tsx` — pure SVG, derived from cumulative equity series; shaded fill from 0 line down to current % from peak
+
+**Acceptance:** With ≥20 trades, chart shows continuous underwater line with markers for max-DD points. Hides for empty histories.
+
+**Effort:** ~2 hours
+
+---
+
+### 54. `[ ]` Risk-adjusted metrics card
+
+**Why:** Sharpe, Sortino, Calmar, MAR, Ulcer Index. We compute everything they need. Adds quant credibility. Most prop firms publicly track these.
+
+**Files (new):**
+- `src/lib/risk-metrics.ts` — pure functions: `sharpe`, `sortino`, `calmar`, `mar`, `ulcerIndex` over an R series + tests
+- `src/components/analytics/risk-adjusted-metrics.tsx` — KPI strip card
+
+**Acceptance:** With ≥30 closed trades, all five metrics render with sub-text definitions. Tests cover degenerate cases (all wins, all losses, zero variance).
+
+**Effort:** ~3 hours
+
+---
+
+### 55. `[ ]` Time-to-resolution distribution
+
+**Why:** Histogram: how long do winners run vs. losers? If losers resolve in 12 min and winners in 4 hours you're doing it right. If reversed, you're cutting winners.
+
+**Files (new):**
+- `src/components/analytics/time-to-resolution.tsx` — derives `closed_at − opened_at` per trade, splits winner/loser, renders two overlaid histograms
+
+**Acceptance:** With ≥10 winners + ≥10 losers, card shows two distributions + median labels.
+
+**Effort:** ~2 hours
+
+---
+
+### 56. `[ ]` Drawdown per playbook
+
+**Why:** Playbooks card shows P&L/WR/expectancy. Add max-DD-per-playbook so traders see which setups have nasty losing streaks even when lifetime expectancy is fine.
+
+**Files:**
+- Extend `src/app/(dashboard)/playbooks/page.tsx` (or the per-playbook stats query) — compute per-playbook running cumulative + max DD; surface as a column on each playbook card
+
+**Acceptance:** Each playbook card renders Max DD ($ or R, configurable) alongside existing stats.
+
+**Effort:** ~2 hours
+
+---
+
+## 🟣 Sprint J — Capture-side / schema additions
+
+Items 57–61 require small migrations + write-side changes.
+
+### 57. `[ ]` Pre-session journal entry kind
+
+**Why:** Distinct from per-trade ideas: "Today's plan — bias, levels, no-trade zones, news to avoid." End of day: reconcile to plan. `journal_entries.kind` already accepts arbitrary strings — use `"session_plan"`. Add a Today widget on the dashboard.
+
+**Files:**
+- `src/components/journal/log-session-plan-button.tsx` — analog to LogIdeaButton
+- `src/components/dashboard/today-plan-card.tsx` — shows today's session_plan entry, prompts to create one if none
+- Journal view: filter pill for "Plans"
+
+**Acceptance:** Creating a session_plan entry surfaces it on the dashboard for the rest of the trading day; reconciliation prompt appears at the user's end-of-session time (from settings).
+
+**Effort:** ~half day
+
+---
+
+### 58. `[ ]` Hypothetical idea fields (delivers #37's deferred punchline)
+
+**Why:** Add `idea_pair`, `idea_side`, `idea_entry`, `idea_stop`, `idea_target` to `journal_entries`. Then ideas-vs-executions can compute "the 5 setups you skipped would have averaged +0.8R" using Polygon historical bars to look up the would-have-been outcome.
+
+**Files:**
+- Migration `journal_entries_idea_setup` — add the 5 columns (all nullable)
+- Idea section of the entry editor drawer — show pair/side/entry/stop/target inputs when `kind === "idea"`
+- Backfill server action `computeSkippedIdeaR(entryId)` — fetches Polygon candles from idea creation forward N days, simulates the would-have-been outcome (resolves stop/target first, otherwise N-day-forward close)
+- Update IdeasComparisonCard with the realized "skipped would have averaged +0.8R" headline
+
+**Acceptance:** Idea entry with pair/entry/stop/target → after the lookback window passes, the comparison card surfaces the skipped-ideas R total.
+
+**Effort:** ~half day
+
+---
+
+### 59. `[ ]` Account "phase" tracking for prop firms
+
+**Why:** Prop traders are a huge slice of the funded forex market and live on these metrics: eval / verification / funded; payout cadence; days to next payout; current trailing-DD usage.
+
+**Files:**
+- Migration `accounts_prop_phase`: `prop_phase` enum-text, `prop_payout_cadence_days` integer, `prop_next_payout_at` date, `prop_max_drawdown_pct` numeric, `prop_max_daily_drawdown_pct` numeric, `prop_profit_target_pct` numeric
+- `src/components/dashboard/prop-phase-card.tsx` — surfaces phase chip + days-to-payout + DD usage bars
+- Integrate into account create/edit modal
+
+**Acceptance:** Mark an account as "eval" with a $5k profit target and 5% trailing DD → card shows progress to target + days-since-DD-floor. Funded accounts show payout countdown.
+
+**Effort:** ~half day
+
+---
+
+### 60. `[ ]` Pip-value resolved at trade time
+
+**Why:** Pip-value depends on account currency, contract size, and quote currency. Computing it at fill time and storing on `trade_fills` makes every "average pips" analytic currency-correct without ad-hoc downstream conversion.
+
+**Files:**
+- Migration `trade_fills_pip_value`: add `pip_value_acct` numeric (pip value in account currency)
+- `src/lib/actions/tradelocker.ts` — compute & write during sync using existing `lib/pip.ts` + account currency
+- CSV importer write path same
+- Backfill script for existing fills
+
+**Acceptance:** New fills have non-null `pip_value_acct`. Backfill populates historical fills from current FX rates. Pip-based analytics use it directly.
+
+**Effort:** ~3 hours
+
+---
+
+### 61. `[ ]` Spread at entry
+
+**Why:** Capture bid/ask spread at the moment of fill via TL `/quotes` (already wired in the live-positions feature #30). Lets you build "your fills happen on average at 1.8 pip spread vs. baseline 1.2" — exposes session/news-related cost.
+
+**Files:**
+- Migration `trade_fills_spread`: add `spread_at_fill` numeric (in pips)
+- TL importer: when filling, capture the spread snapshot via existing quote helper if available within ~30s of fill timestamp; otherwise null
+- `src/components/analytics/spread-analysis.tsx` — slim card surfacing avg spread by session
+
+**Acceptance:** New fills with available quote data have non-null spread. Card surfaces the breakdown for users with ≥30 spread-tagged fills.
+
+**Effort:** ~3 hours
+
+---
+
+## 🟡 Sprint K — Premium polish
+
+### 62. `[ ]` Equity curve overlays
+
+**Why:** Equity-curve card is single-line. Premium move: layer faint S&P / DXY benchmark, color the line by session, mark major drawdowns. The chart is already on the dashboard — make it the visual centerpiece.
+
+**Files:**
+- Extend `src/components/dashboard/equity-curve-card.tsx` — optional benchmark series (Polygon I:SPX or I:DXY), session-colored stroke segments, DD markers
+
+**Acceptance:** Toggle in card header lets user pick None / S&P / DXY benchmark. Default off so users without Polygon don't see broken state.
+
+**Effort:** ~3 hours
+
+---
+
+### 63. `[ ]` Lite vs Pro dashboard mode
+
+**Why:** A new user lands on a wall of widgets. A "Lite" preset hides Monte Carlo / Risk-of-Ruin / Margin Projection / Order-Type / Correlation cards by default for users with <50 trades, surfacing them as they're "earned."
+
+**Files:**
+- New `user_settings.dashboard_density` enum: `lite | full`. Default `full`. Auto-set to `lite` for new accounts, prompt to upgrade at 50 trades
+- `src/app/(dashboard)/dashboard/page.tsx` — gate the heavy widgets on the flag
+
+**Acceptance:** New user sees a focused dashboard; existing users see no change.
+
+**Effort:** ~2 hours
+
+---
+
+### 64. `[ ]` Per-page widget reorder + hide
+
+**Why:** Dashboard has 15+ widgets — drag-to-reorder + hide-toggle is a real user need. Persist to user_settings.
+
+**Files:**
+- Migration `user_settings_dashboard_layout`: jsonb column with widget IDs + positions
+- Edit Layout mode toggle on dashboard header; drag handles per card
+
+**Acceptance:** Reorder a card → reload → order persists.
+
+**Effort:** ~half day
+
+---
+
+### 65. `[ ]` Light mode verification + polish
+
+**Why:** Settings has `theme`. Verify a light theme actually renders all SVG analytics cards (candle bodies, gauge fills, equity curves) correctly. Many traders journal in cafes / outdoors and need it.
+
+**Files:**
+- Audit each `src/components/analytics/*.tsx` SVG for hardcoded dark colors, swap to CSS vars; same for dashboard widgets
+
+**Acceptance:** Switching to light mode produces a usable, contrast-correct UI on every page. Screenshots of every page in light mode side-by-side with dark mode.
+
+**Effort:** ~half day
+
+---
+
+### 66. `[ ]` Trade comparison view (multi-select)
+
+**Why:** Multi-select 2–4 trades from Ledger → side-by-side diff: replay charts, costs, journal entries, mood. "Why did this win and that lose?" forces real reflection.
+
+**Files (new):**
+- `src/app/(dashboard)/ledger/compare/page.tsx` — accepts `?trades=id1,id2,id3` and renders columns
+- Ledger row checkbox + "Compare N selected" CTA
+
+**Acceptance:** Select 2–4 trades → Compare → side-by-side replay charts with synced timeframes + journal entries.
+
+**Effort:** ~half day
+
+---
+
+### 67. `[ ]` Print stylesheet for Trade Detail Drawer
+
+**Why:** Coaching workflows: trader exports a single trade as PDF for a session with a mentor. Reports has print view; extend to drawer.
+
+**Files:**
+- `src/app/(dashboard)/trades/[id]/print/page.tsx` (new) — server-rendered single-trade page mirroring drawer content with print CSS
+- Drawer header: "Print / PDF" button linking to it
+
+**Acceptance:** Print preview produces a clean one-page summary with all fills, lifecycle, journal entry, replay snapshot.
+
+**Effort:** ~3 hours
+
+---
+
+### 68. `[ ]` Auto-narrative on every analytics card
+
+**Why:** Several cards already auto-narrate (Order-Type, Scale-Out, RuleBreak). Make every analytics card emit a one-line auto-narrative. The narratives are the actual product — the charts are just evidence.
+
+**Files:**
+- Audit `src/components/analytics/*.tsx` for cards lacking a narrative line; standardize on a `<NarrativeBanner>` shared component
+
+**Acceptance:** Every analytics card with sufficient sample size emits exactly one narrative sentence calling out its top finding.
+
+**Effort:** ~3 hours
+
+---
+
+## 🔮 Sprint L — Coach AI deepening
+
+### 69. `[ ]` Coach AI agent / chat mode
+
+**Why:** Today Coach returns observations + suggestions. Next step: let the user reply ("explain this," "what would changing X do") — turn it into a dialogue against their own data.
+
+**Files (new):**
+- Migration `coach_conversations`: id, user_id, messages jsonb, created_at
+- `src/lib/actions/coach-chat.ts` — multi-turn chat using existing trade/journal context
+- `src/components/dashboard/coach-chat-drawer.tsx` — drawer UI off the existing CoachNudge
+
+**Acceptance:** Click a Coach observation → "Ask follow-up" → multi-turn chat preserving context. Conversations persist.
+
+**Effort:** ~half day
+
+---
+
+### 70. `[ ]` Coach AI weekly retrospective (in-app)
+
+**Why:** Distinct from the Sunday email digest — a Monday-morning in-app card: "Last week's three things to keep doing, three things to stop." Cached weekly, regenerable.
+
+**Files:**
+- Reuse `coach.ts` + add a `weeklyRetrospective()` variant with a dedicated system prompt
+- `src/components/dashboard/weekly-retrospective-card.tsx` — Monday-morning slot
+
+**Acceptance:** Card auto-generates Monday morning; remains visible all week; user can regenerate.
+
+**Effort:** ~3 hours
+
+---
+
+### 71. `[ ]` Voice journal entries (Whisper)
+
+**Why:** PWA + web Audio API → Whisper API → text. Coach AI auto-tag runs on transcription. Removes friction at the moment of execution where typing competes with watching the chart.
+
+**Files:**
+- `src/lib/audio/recorder.ts` — MediaRecorder wrapper
+- Server action `transcribeAudio(blob)` — calls Whisper API
+- Mic button on entry editor + Log Trade modal note field
+
+**Acceptance:** Hold mic button → record → release → transcription populates the field within ~3s for 30s of audio.
+
+**Effort:** ~half day
+
+---
+
+### 72. `[ ]` Coach AI suggestions → enforceable rules
+
+**Why:** When Coach says "stop shorts on EUR/USD — your edge is statistically negative," offer "Add as a rule" → creates a per-pair-side block on the Log Trade modal. Closes the loop from insight → behavior change.
+
+**Files:**
+- Migration `user_trade_rules`: id, user_id, kind (`block_pair_side`, `daily_max_trades`, etc.), payload jsonb, enabled, source (`manual` | `coach`)
+- Modal pre-flight reads user_trade_rules and surfaces matching rules as warnings/blocks
+- "Convert to rule" CTA on Coach suggestion pills
+
+**Acceptance:** Click "Add rule" on a Coach suggestion → block appears in Settings → Rules → next attempt to log a matching trade triggers the warning.
+
+**Effort:** ~half day
+
+---
+
+## 🔵 Sprint M — Long-tail / strategic
+
+### 73. `[ ]` Mobile native shell (Capacitor / RN)
+
+**Why:** PWA + push exists. Wrapping for native app stores is a few-day project that unlocks "I just stopped out, let me journal it now" friction at moment-of-truth.
+
+**Files:**
+- Capacitor harness or React Native + WebView bridge
+- App store provisioning (Apple Developer account, Play Console)
+
+**Acceptance:** App installable from TestFlight + Play Internal Testing; native push works; PWA features unaffected.
+
+**Effort:** ~1 week incl. store review
+
+---
+
+### 74. `[ ]` Backtest reconsidered — replay-based on historical setups
+
+**Why:** Original backtest deferred (needs tickdata feed). Once #58 ships hypothetical-idea fields, you have substrate for *replay-based* backtest: pick a playbook, walk forward through historical setups matching its rules using Polygon data, output forward simulation. Different beast.
+
+**Files:** TBD post-#58.
+
+**Effort:** ~2 days post-#58.
+
+---
+
+### 75. `[ ]` Social / leaderboard layer (opt-in)
+
+**Why:** `/u/[handle]` + share tokens already exist. Most rabid traders want peer competition. Opt-in monthly leaderboards (P&L %, profit factor, max DD) with verified-via-broker badges (TL data makes this defensible vs. Twitter screenshot culture).
+
+**Files (new):**
+- Migration `leaderboard_entries`: monthly snapshot of opt-in user stats
+- `src/app/leaderboard/page.tsx` — public sortable leaderboard
+- Settings → Privacy: opt-in toggle + which metrics to publish
+
+**Acceptance:** Toggle opt-in → user appears in monthly board with verified-broker badge. Toggle off removes within 24h.
+
+**Effort:** ~half week
+
+---
+
+### 76. `[ ]` TradeLocker WebSocket — revisit
+
+**Why:** Originally deferred (#38) for hosting reasons. Revisit when push notifications need millisecond reaction (e.g., daily-DD red alert), or when a hosted listener becomes available for any reason.
+
+**Files:**
+- `src/lib/integrations/tradelocker/socket.ts` — WS client wrapper
+- Separate Node listener service on Fly.io / Railway
+
+**Acceptance:** Trade fill → journal Ledger row appears within 1s without sync.
+
+**Effort:** ~1 day + hosting setup
+
+---
+
+### 77. `[ ]` MT4/5 + cTrader broker integrations — revisit
+
+**Why:** Decision log defers MT/cTrader (#16, #17). Retail forex base is mostly there. Revisit when growth slows or when batched together as a one-week broker push makes sense economically.
+
+**Files:** mirror `src/lib/integrations/tradelocker/*` for cTrader; bridge EA + docs for MT4/5.
+
+**Effort:** ~1 week for both batched.
+
+---
+
 ## Decision log
 
 Record decisions to defer or skip items here so the reasoning isn't lost.
@@ -758,3 +1284,4 @@ Record decisions to defer or skip items here so the reasoning isn't lost.
 - **2026-05-02** — Backtest deferred indefinitely. Cost is the historical-data feed, not the UI. Revisit when ≥ 100 trades on a single playbook exist (so backtest-vs-live comparison is meaningful) and a data provider is committed.
 - **2026-05-02** — Items #5, #6, #7 deferred — they need infrastructure (FX rates, R/percent display refactor, sizing cap propagation) that's disproportionate to the visible value. (Subsequently un-deferred and shipped same day per user request.)
 - **2026-05-03** — Items #22–#40 added based on TradeLocker data audit + brainstorm. Sprint A (#22–#25) prioritized first because every downstream analytic gets richer data automatically once those columns exist.
+- **2026-05-06** — Items #41–#77 added from a full-app review. Sprint H (#41–#47) takes priority — pure UI work over data we already capture. Sprint I, J, K, L, M sequenced by ROI vs. effort. Decision: ship Sprint H in this session.
