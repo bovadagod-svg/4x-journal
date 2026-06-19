@@ -44,9 +44,12 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
     : null
 
   const [{ data: account }, memberMap] = await Promise.all([
-    supabase.from("accounts").select("id, label, broker, color, currency").eq("id", trade.account_id).maybeSingle(),
+    supabase.from("accounts").select("id, label, broker, color, currency, user_id").eq("id", trade.account_id).maybeSingle(),
     getTeamMemberMap(),
   ])
+
+  // Attribution rolls up to the account's owner; fall back to whoever logged it.
+  const attributedUserId = account?.user_id ?? trade.user_id
 
   return {
     trade,
@@ -54,7 +57,7 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
     account: account ?? null,
     playbook,
     playbookOptions: playbookOptions ?? [],
-    createdByName: memberMap[trade.user_id] ?? null,
+    createdByName: memberMap[attributedUserId] ?? null,
   }
 }
 

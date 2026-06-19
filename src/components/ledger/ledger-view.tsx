@@ -12,11 +12,13 @@ export function LedgerView({
   entriesByTrade,
   playbookMap,
   traderMap = {},
+  accountOwnerMap = {},
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
   playbookMap: Map<string, string>
   traderMap?: Record<string, string>
+  accountOwnerMap?: Record<string, string>
 }) {
   const [filters, setFilters] = useState<LedgerFilters>(EMPTY_FILTERS)
 
@@ -95,6 +97,7 @@ export function LedgerView({
         playbookMap={playbookMap}
         totalCount={trades.length}
         traderMap={traderMap}
+        accountOwnerMap={accountOwnerMap}
       />
     </>
   )

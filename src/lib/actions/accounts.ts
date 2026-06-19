@@ -27,6 +27,40 @@ export type AccountFormState =
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
   | undefined
 
+/**
+ * Claim or (re)assign an account's owner. The owner is the trader every trade
+ * on the account is attributed to. Any team member can claim an account for
+ * themselves or assign it to another member of the same team.
+ */
+export async function setAccountOwner(
+  accountId: string, ownerUserId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  // The account must be visible to the caller (RLS = same team).
+  const { data: acct } = await supabase
+    .from("accounts").select("id, team_id").eq("id", accountId).maybeSingle()
+  if (!acct) return { ok: false, error: "Account not found." }
+
+  // New owner must belong to the account's team.
+  if (acct.team_id) {
+    const { count } = await supabase
+      .from("team_members").select("*", { count: "exact", head: true })
+      .eq("team_id", acct.team_id).eq("user_id", ownerUserId)
+    if (!count) return { ok: false, error: "That person isn't on this account's team." }
+  }
+
+  const { error } = await supabase
+    .from("accounts").update({ user_id: ownerUserId }).eq("id", accountId)
+  if (error) return { ok: false, error: error.message }
+
+  // Attribution rolls up from account owner, so refresh everywhere it shows.
+  revalidatePath("/", "layout")
+  return { ok: true }
+}
+
 export async function createAccount(
   _prev: AccountFormState,
   formData: FormData,

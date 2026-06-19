@@ -11,6 +11,16 @@ export async function getUserAccounts() {
   return data ?? []
 }
 
+/** accountId → owner user_id. Drives trade attribution (trades roll up to the
+ * account's owner). RLS scopes this to the user's team. */
+export async function getAccountOwnerMap(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data } = await supabase.from("accounts").select("id, user_id")
+  const map: Record<string, string> = {}
+  for (const a of data ?? []) map[a.id] = a.user_id
+  return map
+}
+
 /**
  * Build a 7-day cumulative-balance series for each account. The series ends
  * at the account's current balance and walks backward by subtracting each

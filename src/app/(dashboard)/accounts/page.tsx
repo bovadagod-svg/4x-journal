@@ -3,6 +3,7 @@ import { SectionStub } from "@/components/shell/section-stub"
 import { SECTION_META } from "@/lib/sections"
 import { createClient } from "@/lib/supabase/server"
 import { getUserAccounts, getAccountSparks } from "@/lib/queries/accounts"
+import { getTeamMemberMap } from "@/lib/queries/teams"
 import { AccountCard, AddAccountButton, type AccountConnection } from "@/components/accounts/account-card"
 import { AllocationBar } from "@/components/accounts/allocation-bar"
 import { CsvImportButton } from "@/components/accounts/csv-import-modal"
@@ -67,6 +68,9 @@ export default async function AccountsPage() {
     : { data: null }
   const displayCurrency = settingsRow?.display_currency ?? "USD"
   const fxRates = parseFxRates(settingsRow?.fx_rates)
+
+  // Team member names for account ownership UI (user_id → display name).
+  const traderMap = await getTeamMemberMap()
 
   // Top KPIs — convert per-account values into displayCurrency before summing.
   // Sparkline-derived deltas (7d net) inherit each account's currency too —
@@ -177,6 +181,8 @@ export default async function AccountsPage() {
             tradeCount={tradeCounts.get(a.id) ?? 0}
             connection={connByAccount.get(a.id) ?? null}
             spark={sparks.get(a.id) ?? []}
+            traderMap={traderMap}
+            currentUserId={user?.id ?? ""}
           />
         ))}
       </div>

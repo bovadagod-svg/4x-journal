@@ -3,18 +3,19 @@ import { SectionStub } from "@/components/shell/section-stub"
 import { SECTION_META } from "@/lib/sections"
 import { Icon } from "@/components/icons"
 import { getJournalEntries, getUserTrades } from "@/lib/queries/trades"
-import { getUserPlaybooks } from "@/lib/queries/accounts"
+import { getUserPlaybooks, getAccountOwnerMap } from "@/lib/queries/accounts"
 import { getTeamMemberMap } from "@/lib/queries/teams"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { LedgerView } from "@/components/ledger/ledger-view"
 
 export default async function LedgerPage() {
   const m = SECTION_META.ledger
-  const [trades, entries, playbooks, traderMap] = await Promise.all([
+  const [trades, entries, playbooks, traderMap, accountOwnerMap] = await Promise.all([
     getUserTrades({ limit: 1000 }),
     getJournalEntries({ limit: 5000 }),
     getUserPlaybooks(),
     getTeamMemberMap(),
+    getAccountOwnerMap(),
   ])
 
   if (trades.length === 0) {
@@ -74,6 +75,7 @@ export default async function LedgerPage() {
         entriesByTrade={entriesByTrade}
         playbookMap={playbookMap}
         traderMap={traderMap}
+        accountOwnerMap={accountOwnerMap}
       />
     </>
   )

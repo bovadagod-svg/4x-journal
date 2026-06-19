@@ -6,7 +6,7 @@ import { Icon } from "@/components/icons"
 import { Sparkline } from "@/components/charts/sparkline"
 import { formatUSD } from "@/lib/finance"
 import { marginStatusColor, MARGIN_COLOR_VAR } from "@/lib/status"
-import { deleteAccount, setDefaultAccount } from "@/lib/actions/accounts"
+import { deleteAccount, setDefaultAccount, setAccountOwner } from "@/lib/actions/accounts"
 import { AccountFormModal } from "./account-form-modal"
 import { SyncTradeLockerButton } from "./sync-button"
 import type { AccountConnection } from "./account-card"
@@ -18,12 +18,16 @@ export function AccountDrawer({
   tradeCount,
   connection,
   onClose,
+  traderMap = {},
+  currentUserId = "",
 }: {
   account: Account
   spark: number[]
   tradeCount: number
   connection: AccountConnection | null
   onClose: () => void
+  traderMap?: Record<string, string>
+  currentUserId?: string
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<"overview" | "connection" | "danger">("overview")
@@ -151,6 +155,15 @@ export function AccountDrawer({
                 <Cell label="Connected since" value={since} />
               </div>
 
+              {Object.keys(traderMap).length > 1 && (
+                <OwnerControl
+                  account={account}
+                  traderMap={traderMap}
+                  currentUserId={currentUserId}
+                  onChanged={() => router.refresh()}
+                />
+              )}
+
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <h4 style={{ margin: 0, fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600 }}>Quick links</h4>
                 <a href={`/ledger?account=${account.id}`} className="btn" style={{ justifyContent: "flex-start", padding: 12 }}>
@@ -250,6 +263,61 @@ export function AccountDrawer({
 
       <AccountFormModal open={editing} onClose={() => setEditing(false)} account={account} />
     </>
+  )
+}
+
+function OwnerControl({
+  account, traderMap, currentUserId, onChanged,
+}: {
+  account: Account
+  traderMap: Record<string, string>
+  currentUserId: string
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const ownerName = traderMap[account.user_id] ?? "Unclaimed"
+  const ownedByMe = account.user_id === currentUserId
+
+  const set = async (ownerUserId: string) => {
+    setBusy(true); setErr(null)
+    const r = await setAccountOwner(account.id, ownerUserId)
+    setBusy(false)
+    if (!r.ok) setErr(r.error ?? "Failed.")
+    else onChanged()
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <h4 style={{ margin: 0, fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600 }}>Account owner</h4>
+      <div style={{ fontSize: 11.5, color: "var(--c-fg-muted)" }}>
+        Every trade on this account is attributed to its owner.
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select
+          value={account.user_id}
+          disabled={busy}
+          onChange={(e) => set(e.target.value)}
+          style={{
+            padding: "7px 10px", background: "var(--c-bg-elev-2)",
+            border: "1px solid var(--c-border)", borderRadius: 6, fontSize: 12.5,
+            color: "var(--c-fg)", outline: "none", flex: 1, minWidth: 160,
+          }}
+        >
+          {!(account.user_id in traderMap) && <option value={account.user_id}>{ownerName}</option>}
+          {Object.entries(traderMap).map(([uid, name]) => (
+            <option key={uid} value={uid}>{name}{uid === currentUserId ? " (you)" : ""}</option>
+          ))}
+        </select>
+        {!ownedByMe && (
+          <button type="button" className="btn btn-primary" disabled={busy} style={{ padding: "7px 14px", fontSize: 12 }}
+            onClick={() => set(currentUserId)}>
+            {busy ? "…" : "Claim"}
+          </button>
+        )}
+      </div>
+      {err && <span style={{ fontSize: 11.5, color: "var(--c-red-bright)" }}>{err}</span>}
+    </div>
   )
 }
 

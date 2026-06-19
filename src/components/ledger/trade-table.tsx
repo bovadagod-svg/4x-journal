@@ -27,6 +27,7 @@ export function TradeTable({
   playbookMap,
   totalCount,
   traderMap = {},
+  accountOwnerMap = {},
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
@@ -34,10 +35,15 @@ export function TradeTable({
   totalCount: number
   /** user_id → display name. Drives the "Trader" column (team mode). */
   traderMap?: Record<string, string>
+  /** accountId → owner user_id. Trades attribute to their account's owner. */
+  accountOwnerMap?: Record<string, string>
 }) {
   // Only show attribution when the workspace actually has more than one member.
   const showTrader = Object.keys(traderMap).length > 1
   const colCount = showTrader ? 13 : 12
+  // A trade's trader = the owner of its account (falls back to the logger).
+  const traderFor = (t: Trade): string | null =>
+    traderMap[accountOwnerMap[t.account_id] ?? t.user_id] ?? null
   const enriched: ColumnEnriched[] = useMemo(
     () =>
       trades.map((t) => {
@@ -221,22 +227,25 @@ export function TradeTable({
                         <span style={{ fontWeight: 500 }}>{t.pair}</span>
                       </div>
                     </td>
-                    {showTrader && (
-                      <td style={{ padding: "11px 12px", color: "var(--c-fg-muted)", whiteSpace: "nowrap" }}>
-                        {traderMap[t.user_id] ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={traderMap[t.user_id]}>
-                            <span style={{
-                              width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-                              background: "var(--c-bg-elev-3)", display: "inline-flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 9, fontWeight: 600,
-                            }}>
-                              {traderMap[t.user_id].slice(0, 2).toUpperCase()}
+                    {showTrader && (() => {
+                      const trader = traderFor(t)
+                      return (
+                        <td style={{ padding: "11px 12px", color: "var(--c-fg-muted)", whiteSpace: "nowrap" }}>
+                          {trader ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={trader}>
+                              <span style={{
+                                width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                                background: "var(--c-bg-elev-3)", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 9, fontWeight: 600,
+                              }}>
+                                {trader.slice(0, 2).toUpperCase()}
+                              </span>
+                              <span style={{ fontSize: 11.5 }}>{trader}</span>
                             </span>
-                            <span style={{ fontSize: 11.5 }}>{traderMap[t.user_id]}</span>
-                          </span>
-                        ) : "—"}
-                      </td>
-                    )}
+                          ) : "—"}
+                        </td>
+                      )
+                    })()}
                     <td style={{ padding: "11px 12px" }}>
                       <span className={"chip " + (t.side === "long" ? "chip-green" : "chip-red")} style={{ fontSize: 10, padding: "1px 7px" }}>
                         <Icon name={t.side === "long" ? "arrowUp" : "arrowDown"} size={9} /> {t.side.toUpperCase()}

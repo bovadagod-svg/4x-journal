@@ -23,13 +23,21 @@ export function AccountCard({
   tradeCount,
   connection,
   spark,
+  traderMap = {},
+  currentUserId = "",
 }: {
   account: Account
   tradeCount: number
   connection?: AccountConnection | null
   spark: number[]
+  /** user_id → display name, for the owner chip + claim control (team mode). */
+  traderMap?: Record<string, string>
+  currentUserId?: string
 }) {
   const [open, setOpen] = useState(false)
+  // Show ownership only when the workspace has more than one member.
+  const teamMode = Object.keys(traderMap).length > 1
+  const ownerName = traderMap[account.user_id] ?? null
 
   const balance = Number(account.balance)
   const equity = Number(account.equity)
@@ -125,6 +133,11 @@ export function AccountCard({
           {connection?.last_sync_status === "error" && (
             <span className="chip chip-red" style={{ fontSize: 10 }}>sync error</span>
           )}
+          {teamMode && (
+            <span className="chip" style={{ fontSize: 10, color: ownerName ? "var(--c-fg-muted)" : "var(--c-amber)" }} title={ownerName ? `Owned by ${ownerName}` : "Unclaimed"}>
+              <Icon name="user" size={9} /> {ownerName ?? "Unclaimed"}
+            </span>
+          )}
           <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--c-fg-dim)" }}>
             <Icon name="chevronRight" size={11} />
           </span>
@@ -138,6 +151,8 @@ export function AccountCard({
           tradeCount={tradeCount}
           connection={connection ?? null}
           onClose={() => setOpen(false)}
+          traderMap={traderMap}
+          currentUserId={currentUserId}
         />
       )}
     </>
