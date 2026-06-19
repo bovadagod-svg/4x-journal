@@ -32,6 +32,7 @@ import type { TradeFill } from "@/lib/queries/trade-fills"
 
 export function AnalyticsView({
   trades,
+  last12moTrades,
   entriesByTrade,
   prevEntries,
   playbookMap,
@@ -40,6 +41,9 @@ export function AnalyticsView({
   simStartBalance,
 }: {
   trades: Trade[]
+  /** Fixed last-12-months window for the Monthly P&L + Daily heatmap, which
+   * always span 12 months regardless of the page range filter. */
+  last12moTrades?: Trade[]
   entriesByTrade: Map<string, JournalEntry>
   prevEntries?: JournalEntry[]
   playbookMap: Map<string, string>
@@ -51,6 +55,11 @@ export function AnalyticsView({
   // so the `trades` prop is already scoped to the user's chosen range.
   // Closed trades only — analytics are meaningless for open positions.
   const filtered = useMemo(() => trades.filter((t) => t.status === "closed"), [trades])
+  // The two "last 12 months" widgets ignore the range filter.
+  const yearClosed = useMemo(
+    () => (last12moTrades ?? trades).filter((t) => t.status === "closed"),
+    [last12moTrades, trades],
+  )
   const stats = useMemo(() => agg(filtered), [filtered])
 
   return (
@@ -123,10 +132,10 @@ export function AnalyticsView({
       <RuleBreakImpact trades={filtered} entriesByTrade={entriesByTrade} prevEntries={prevEntries} />
 
       {/* Monthly comparison — respects the range; widen to All for lifetime view */}
-      <MonthlyComparison trades={filtered} />
+      <MonthlyComparison trades={yearClosed} />
 
       {/* Calendar heatmap — respects the range; widen to All for lifetime view */}
-      <CalendarHeatmap trades={filtered} />
+      <CalendarHeatmap trades={yearClosed} />
 
       {/* Pair + Setup breakdowns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>

@@ -13,12 +13,15 @@ import type { Trade } from "@/lib/queries/trades"
  */
 export function MonthlyComparison({ trades }: { trades: Trade[] }) {
   const stats = useMemo(() => compute(trades), [trades])
-  if (stats.months.length < 2) {
+  // Rank only months that actually had trades — an empty month at $0 must never
+  // win "Best" over a profitable (or any active) month.
+  const active = stats.months.filter((m) => m.count > 0)
+  if (active.length === 0) {
     return null
   }
-  const best = [...stats.months].sort((a, b) => b.pnl - a.pnl)[0]
-  const worst = [...stats.months].sort((a, b) => a.pnl - b.pnl)[0]
-  const max = Math.max(...stats.months.map((m) => Math.abs(m.pnl)), 1)
+  const best = [...active].sort((a, b) => b.pnl - a.pnl)[0]
+  const worst = [...active].sort((a, b) => a.pnl - b.pnl)[0]
+  const max = Math.max(...active.map((m) => Math.abs(m.pnl)), 1)
 
   return (
     <div className="card">
@@ -114,13 +117,17 @@ function Mini({ label, value, sub, color }: { label: string; value: string; sub:
 }
 
 function compute(trades: Trade[]) {
-  const closed = trades.filter((t) => t.status === "closed" && t.closed_at)
+  const closed = trades.filter((t) => t.status === "closed")
 
-  // Group by YYYY-MM
+  // Group realized P&L by the month the trade was OPENED (entry month), so it
+  // lines up with the Trading Calendar's entry-day bucketing. Local time, to
+  // match the month-window loop below.
   const byMonth = new Map<string, Trade[]>()
   for (const t of closed) {
-    const d = new Date(t.closed_at!)
-    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+    const ref = t.opened_at ?? t.closed_at
+    if (!ref) continue
+    const d = new Date(ref)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
     const arr = byMonth.get(key) ?? []
     arr.push(t)
     byMonth.set(key, arr)

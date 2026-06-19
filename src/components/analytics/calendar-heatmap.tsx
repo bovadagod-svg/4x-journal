@@ -17,8 +17,9 @@ export function CalendarHeatmap({ trades }: { trades: Trade[] }) {
   const data = useMemo(() => compute(trades), [trades])
   if (data.totals.activeDays === 0) return null
 
-  const cellSize = 12
-  const gap = 2
+  const cellSize = 15
+  const gap = 3
+  const labelW = 26
   const weeks = data.weeks
 
   // Bucket P&L into 5 intensities (signed). Use absolute pnl-day percentile so
@@ -44,32 +45,34 @@ export function CalendarHeatmap({ trades }: { trades: Trade[] }) {
 
   return (
     <div className="card">
-      <div style={{ marginBottom: 14, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div>
-          <h3 className="card-title">Daily P&L · last 12 months</h3>
-          <p className="card-subtitle">{data.totals.activeDays} trading days · {data.totals.profitableDays} green · {data.totals.losingDays} red</p>
-        </div>
-        <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--c-fg-muted)" }}>
-          <Headline label="Best day" value={data.totals.bestDay ? formatUSD(data.totals.bestDay.pnl, { signed: true }) : "—"} sub={data.totals.bestDay?.label ?? ""} color="var(--c-green-bright)" />
-          <Headline label="Worst day" value={data.totals.worstDay ? formatUSD(data.totals.worstDay.pnl, { signed: true }) : "—"} sub={data.totals.worstDay?.label ?? ""} color="var(--c-red-bright)" />
-          <Headline label="Day-WR" value={data.totals.activeDays > 0 ? `${Math.round((data.totals.profitableDays / data.totals.activeDays) * 100)}%` : "—"} sub="profitable days" />
-        </div>
+      <div style={{ marginBottom: 14 }}>
+        <h3 className="card-title">Daily P&L · last 12 months</h3>
+        <p className="card-subtitle">{data.totals.activeDays} trading days · {data.totals.profitableDays} green · {data.totals.losingDays} red</p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 16 }}>
+        <Headline label="Net P&L" value={formatUSD(data.totals.netPnl, { signed: true })} sub="last 12 months" color={data.totals.netPnl > 0 ? "var(--c-green-bright)" : data.totals.netPnl < 0 ? "var(--c-red-bright)" : undefined} />
+        <Headline label="Best day" value={data.totals.bestDay ? formatUSD(data.totals.bestDay.pnl, { signed: true }) : "—"} sub={data.totals.bestDay?.label ?? "—"} color="var(--c-green-bright)" />
+        <Headline label="Worst day" value={data.totals.worstDay ? formatUSD(data.totals.worstDay.pnl, { signed: true }) : "—"} sub={data.totals.worstDay?.label ?? "—"} color="var(--c-red-bright)" />
+        <Headline label="Day-WR" value={data.totals.activeDays > 0 ? `${Math.round((data.totals.profitableDays / data.totals.activeDays) * 100)}%` : "—"} sub="profitable days" />
+        <Headline label="Avg / day" value={data.totals.activeDays > 0 ? formatUSD(data.totals.avgPerDay, { signed: true }) : "—"} sub="per trading day" color={data.totals.avgPerDay > 0 ? "var(--c-green-bright)" : data.totals.avgPerDay < 0 ? "var(--c-red-bright)" : undefined} />
+        <Headline label="Best streak" value={data.totals.bestStreak > 0 ? `${data.totals.bestStreak} day${data.totals.bestStreak === 1 ? "" : "s"}` : "—"} sub="green in a row" color={data.totals.bestStreak > 0 ? "var(--c-green-bright)" : undefined} />
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <div style={{ minWidth: weeks.length * (cellSize + gap) + 30 }}>
+        <div style={{ minWidth: weeks.length * (cellSize + gap) + labelW }}>
           {/* Month labels strip */}
-          <div style={{ display: "grid", gridTemplateColumns: `30px repeat(${weeks.length}, ${cellSize + gap}px)`, marginBottom: 4, fontSize: 9.5, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: `${labelW}px repeat(${weeks.length}, ${cellSize + gap}px)`, marginBottom: 4, fontSize: 9.5, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>
             <span></span>
             {data.monthLabels.map((m, i) => (
               <span key={i} style={{ gridColumn: `${m.weekIdx + 2}`, gridRow: 1 }}>{m.label}</span>
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: `30px repeat(${weeks.length}, ${cellSize + gap}px)`, alignItems: "center", gap }}>
+          <div style={{ display: "grid", gridTemplateColumns: `${labelW}px repeat(${weeks.length}, ${cellSize + gap}px)`, alignItems: "center", gap }}>
             {/* Day-of-week labels */}
             <div style={{ display: "flex", flexDirection: "column", gap, fontSize: 9.5, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>
-              {["", "M", "", "W", "", "F", ""].map((d, i) => (
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
                 <span key={i} style={{ height: cellSize, lineHeight: `${cellSize}px` }}>{d}</span>
               ))}
             </div>
@@ -115,7 +118,7 @@ export function CalendarHeatmap({ trades }: { trades: Trade[] }) {
 
 function Headline({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div style={{ background: "var(--c-bg-elev-2)", borderRadius: 8, padding: "6px 10px", lineHeight: 1.2, textAlign: "right" }}>
+    <div style={{ background: "var(--c-bg-elev-2)", borderRadius: 8, padding: "8px 10px", lineHeight: 1.2, textAlign: "left" }}>
       <div style={{ fontSize: 9.5, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
       <div className="tnum" style={{ fontSize: 13, fontWeight: 600, color: color ?? "var(--c-fg)" }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)" }}>{sub}</div>}
@@ -124,13 +127,16 @@ function Headline({ label, value, sub, color }: { label: string; value: string; 
 }
 
 function compute(trades: Trade[]) {
-  const closed = trades.filter((t) => t.status === "closed" && t.closed_at)
+  const closed = trades.filter((t) => t.status === "closed")
   const dayMs = 86_400_000
 
-  // Aggregate P&L per day (UTC)
+  // Aggregate realized P&L per day, keyed by the day the trade OPENED (entry
+  // day) so it lines up with the Trading Calendar. UTC keying matches the grid.
   const byDay = new Map<string, { count: number; pnl: number; date: Date }>()
   for (const t of closed) {
-    const d = new Date(t.closed_at!)
+    const ref = t.opened_at ?? t.closed_at
+    if (!ref) continue
+    const d = new Date(ref)
     const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
     const slot = byDay.get(key) ?? { count: 0, pnl: 0, date: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) }
     slot.count += 1
@@ -187,6 +193,18 @@ function compute(trades: Trade[]) {
   const bestDay = sortedDays[0] ?? null
   const worstDay = sortedDays[sortedDays.length - 1] ?? null
 
+  const netPnl = tradingDays.reduce((s, d) => s + d.pnl, 0)
+  const avgPerDay = tradingDays.length > 0 ? netPnl / tradingDays.length : 0
+
+  // Longest run of consecutive profitable trading days (non-trading days are
+  // ignored; a flat/red trading day resets the run).
+  let bestStreak = 0
+  let run = 0
+  for (const d of tradingDays) {
+    if (d.pnl > 0) { run += 1; if (run > bestStreak) bestStreak = run }
+    else run = 0
+  }
+
   return {
     weeks,
     monthLabels,
@@ -197,6 +215,9 @@ function compute(trades: Trade[]) {
       losingDays: losingDays.length,
       bestDay: bestDay && bestDay.pnl > 0 ? bestDay : null,
       worstDay: worstDay && worstDay.pnl < 0 ? worstDay : null,
+      netPnl,
+      avgPerDay,
+      bestStreak,
     },
   }
 }

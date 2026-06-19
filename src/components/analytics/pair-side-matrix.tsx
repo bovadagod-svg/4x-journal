@@ -35,9 +35,9 @@ export function PairSideMatrix({ trades }: { trades: Trade[] }) {
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <div style={{ minWidth: 640 }}>
+        <div style={{ minWidth: 700 }}>
           <div style={{
-            display: "grid", gridTemplateColumns: "120px 56px 64px 60px 70px 56px 64px 60px 70px 70px",
+            display: "grid", gridTemplateColumns: "minmax(120px, 1.6fr) repeat(8, minmax(56px, 1fr)) minmax(64px, 1fr)",
             gap: 6, padding: "6px 0",
             fontSize: 10, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.04em",
             borderBottom: "1px solid var(--c-border)",
@@ -57,7 +57,7 @@ export function PairSideMatrix({ trades }: { trades: Trade[] }) {
             <div
               key={r.pair}
               style={{
-                display: "grid", gridTemplateColumns: "120px 56px 64px 60px 70px 56px 64px 60px 70px 70px",
+                display: "grid", gridTemplateColumns: "minmax(120px, 1.6fr) repeat(8, minmax(56px, 1fr)) minmax(64px, 1fr)",
                 gap: 6, padding: "10px 0",
                 borderBottom: "1px solid var(--c-border)",
                 alignItems: "center", fontSize: 12,

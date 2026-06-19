@@ -25,18 +25,20 @@ export default async function AnalyticsPage({
   // For "All" range there is no previous window — comparisons hide.
   const prev = previousPeriodIso(fromIso, toIso)
 
-  // Trading Calendar always shows the last 12 weeks of entry-day P&L,
-  // independent of the analytics range filter.
-  const calFromIso = new Date(Date.now() - 84 * 24 * 60 * 60 * 1000).toISOString()
-  const calToIso = new Date().toISOString()
+  // The Trading Calendar (12-week), Monthly P&L (12-month) and Daily heatmap
+  // (12-month) views always show their own fixed window, independent of the
+  // analytics range filter — so we fetch a full last-12-months set for them.
+  const now = new Date()
+  const last12moFromIso = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()
+  const nowIso = now.toISOString()
 
-  const [trades, entries, prevEntries, playbooks, accounts, calendarTrades] = await Promise.all([
+  const [trades, entries, prevEntries, playbooks, accounts, last12moTrades] = await Promise.all([
     getUserTrades({ limit: 5000, from: fromIso, to: toIso }),
     getJournalEntries({ limit: 5000, from: fromIso, to: toIso }),
     prev ? getJournalEntries({ limit: 5000, from: prev.from, to: prev.to }) : Promise.resolve([]),
     getUserPlaybooks(),
     getUserAccounts(),
-    getUserTrades({ limit: 2000, from: calFromIso, to: calToIso }),
+    getUserTrades({ limit: 5000, from: last12moFromIso, to: nowIso }),
   ])
 
   const closedCount = trades.filter((t) => t.status === "closed").length
@@ -92,10 +94,11 @@ export default async function AnalyticsPage({
         }
       />
 
-      <TradingCalendar trades={calendarTrades} />
+      <TradingCalendar trades={last12moTrades} />
 
       <AnalyticsView
         trades={trades}
+        last12moTrades={last12moTrades}
         entriesByTrade={entriesByTrade}
         prevEntries={prevEntries}
         playbookMap={playbookMap}
