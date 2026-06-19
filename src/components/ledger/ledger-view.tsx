@@ -53,7 +53,9 @@ export function LedgerView({
         if (result !== filters.result) return false
       }
       if (filters.date) {
-        const ref = t.closed_at ?? t.opened_at ?? t.created_at
+        // Match by entry day so it lines up with the Trading Calendar (which
+        // buckets P&L by the day a trade opened).
+        const ref = t.opened_at ?? t.closed_at ?? t.created_at
         if (!ref || ref.slice(0, 10) !== filters.date) return false
       }
       return true

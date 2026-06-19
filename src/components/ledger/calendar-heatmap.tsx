@@ -4,6 +4,16 @@ import { useMemo } from "react"
 import type { Trade } from "@/lib/queries/trades"
 import { formatUSD } from "@/lib/finance"
 
+/** Compact signed P&L for the tiny calendar cells (color already encodes sign,
+ * but the +/− keeps it unambiguous). e.g. +420, −180, +1.3k. */
+function compactPnl(pnl: number): string {
+  const rounded = Math.round(pnl)
+  if (rounded === 0) return "0"
+  const sign = rounded > 0 ? "+" : "−"
+  const abs = Math.abs(rounded)
+  return abs >= 1000 ? `${sign}${(abs / 1000).toFixed(1)}k` : `${sign}${abs}`
+}
+
 export function CalendarHeatmap({
   trades,
   selectedDate,
@@ -23,11 +33,15 @@ export function CalendarHeatmap({
     start.setUTCDate(start.getUTCDate() - weeks * 7 + 1)
     while (start.getUTCDay() !== 1) start.setUTCDate(start.getUTCDate() - 1)
 
-    // Bucket closed trades by ISO date (YYYY-MM-DD)
+    // Bucket realized P&L by the day the trade was OPENED (entry day). We still
+    // only count closed trades (open trades have no realized P&L), but attribute
+    // that P&L to the entry date so a Monday entry lands on Monday.
     const byDay = new Map<string, { count: number; pnl: number }>()
     for (const t of trades) {
-      if (t.status !== "closed" || !t.closed_at) continue
-      const iso = t.closed_at.slice(0, 10)
+      if (t.status !== "closed") continue
+      const ref = t.opened_at ?? t.closed_at
+      if (!ref) continue
+      const iso = ref.slice(0, 10)
       const acc = byDay.get(iso) ?? { count: 0, pnl: 0 }
       acc.count += 1
       acc.pnl += Number(t.pnl) || 0
@@ -108,7 +122,7 @@ export function CalendarHeatmap({
                       fontWeight: 600,
                     }}
                   >
-                    {day.count > 0 ? day.date.getUTCDate() : ""}
+                    {day.count > 0 ? compactPnl(day.pnl) : ""}
                   </button>
                 )
               })}
