@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { evaluateTrade } from "@/lib/risk"
+import { loadPipValueContext, computePipValueAcct } from "@/lib/pip-value-context"
 import type { Database } from "@/lib/supabase/database.types"
 
 export type TradeDetail = {
@@ -166,6 +167,16 @@ export async function createTrade(
 
   // 2) Write fills. Trigger will recompute aggregates.
   if (status === "open" || status === "closed") {
+    // Forward-write pip_value_acct (#60). Manual trades don't have a separate
+    // contract_size on the form — treat sizeUnits = size (matches how
+    // manual-entry trades render today).
+    const pipCtx = await loadPipValueContext({ supabase, userId: user.id })
+    const pipValueAcct = computePipValueAcct({
+      pair: v.pair,
+      accountId: v.account_id,
+      sizeUnits: v.size,
+      ctx: pipCtx,
+    })
     const fills: Array<{
       trade_id: string
       user_id: string
@@ -174,6 +185,7 @@ export async function createTrade(
       price: number
       size: number
       filled_at: string
+      pip_value_acct?: number | null
     }> = [
       {
         trade_id: trade.id,
@@ -183,6 +195,7 @@ export async function createTrade(
         price: v.entry_price,
         size: v.size,
         filled_at: placedAt,
+        pip_value_acct: pipValueAcct,
       },
     ]
     if (status === "closed" && exit_price != null) {
@@ -194,6 +207,7 @@ export async function createTrade(
         price: exit_price,
         size: v.size,
         filled_at: now,
+        pip_value_acct: pipValueAcct,
       })
     }
     const { error: fillErr } = await supabase.from("trade_fills").insert(fills)

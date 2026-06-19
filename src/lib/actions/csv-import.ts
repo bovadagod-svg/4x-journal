@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
+import { loadPipValueContext, computePipValueAcct } from "@/lib/pip-value-context"
 import type { NormalizedTrade } from "@/lib/integrations/csv/parser"
 
 const ImportSchema = z.object({
@@ -131,13 +132,24 @@ export async function importCsvTrades(formData: FormData): Promise<CsvImportResu
     filled_at: string
     external_provider: "csv"
     external_id: string
+    pip_value_acct?: number | null
   }
+  // Forward-write pip_value_acct (#60). CSV imports don't carry a contract_size
+  // column, so we treat sizeUnits = size (lot-sized fills will get null and the
+  // backfill action will retry once the user adjusts the column or sets rates).
+  const pipCtx = await loadPipValueContext({ supabase, userId: user.id })
   const fills: FillInsert[] = []
   for (let i = 0; i < valid.length; i++) {
     const t = valid[i]
     const row = rows[i]
     const tradeId = tradeByExternal.get(row.external_id)
     if (!tradeId) continue
+    const pipValueAcct = computePipValueAcct({
+      pair: t.pair,
+      accountId: parsed.data.account_id,
+      sizeUnits: t.size,
+      ctx: pipCtx,
+    })
     if (t.opened_at) {
       fills.push({
         trade_id: tradeId,
@@ -149,6 +161,7 @@ export async function importCsvTrades(formData: FormData): Promise<CsvImportResu
         filled_at: t.opened_at,
         external_provider: "csv",
         external_id: `${row.external_id}:entry`,
+        pip_value_acct: pipValueAcct,
       })
     }
     if (t.exit_price != null && t.closed_at) {
@@ -162,6 +175,7 @@ export async function importCsvTrades(formData: FormData): Promise<CsvImportResu
         filled_at: t.closed_at,
         external_provider: "csv",
         external_id: `${row.external_id}:exit`,
+        pip_value_acct: pipValueAcct,
       })
     }
   }

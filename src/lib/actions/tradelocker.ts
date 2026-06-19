@@ -5,6 +5,7 @@ import { z } from "zod"
 import { createClient as createServiceRoleClient, type SupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { computePnL } from "@/lib/finance"
+import { loadPipValueContext, computePipValueAcct } from "@/lib/pip-value-context"
 import type { Database, Json } from "@/lib/supabase/database.types"
 import {
   tlGetAccounts,
@@ -324,12 +325,23 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
       execution_type?: string | null
       magic_number?: string | null
       broker_comment?: string | null
+      pip_value_acct?: number | null
     }
+    // Forward-write pip_value_acct (#60). One ctx per sync — the user's
+    // fx_rates + account currencies don't change mid-sync.
+    const pipCtx = await loadPipValueContext({ supabase, userId })
     const fills: FillInsert[] = []
     for (const p of all) {
       const tradeId = tradeByExternal.get(p.externalId)
       if (!tradeId) continue
       for (const f of p.fills) {
+        const sizeUnits = Number(f.size) * Number(p.contractSize || 1)
+        const pipValueAcct = computePipValueAcct({
+          pair: p.pair,
+          accountId: conn.account_id,
+          sizeUnits,
+          ctx: pipCtx,
+        })
         fills.push({
           trade_id: tradeId,
           user_id: userId,
@@ -348,6 +360,7 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
           execution_type: f.meta.executionType,
           magic_number: f.meta.magicNumber,
           broker_comment: f.meta.comment,
+          pip_value_acct: pipValueAcct,
         })
       }
     }

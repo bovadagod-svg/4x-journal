@@ -104,6 +104,24 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 
 ### 8. `[~]` Verify Vercel env has `SUPABASE_SERVICE_ROLE_KEY`
 
+> **🟢 RESUME HERE — picked up 2026-05-09**
+>
+> Status: **almost done, just needs a 2-min test.**
+>
+> What's already done:
+> - ✅ `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel (verified via `npx vercel env ls production` — listed as Encrypted, set 6 days ago).
+> - ✅ Production redeployed today so the build can read the env var.
+>
+> What's left — **one step**:
+> 1. Hit the TradingView webhook from your terminal to confirm it returns 200, not 500. Steps:
+>    - Open https://4x-journal.vercel.app/settings?tab=integrations and copy your webhook URL.
+>    - Run: `curl -X POST '<paste-url-here>' -H 'content-type: application/json' -d '{"pair":"EUR/USD","side":"long","entry":1.08,"size":1000}'`
+>    - If you get a 200 + a trade ID back → flip this item to `[x]` and you're done.
+>    - If you get a 500 → the key in Vercel is wrong/stale. Tell me and I'll help debug.
+>
+> Optional housekeeping (not blocking):
+> - The service role key was pasted into a chat conversation on 2026-05-08. Whether to rotate is a judgment call — see the security note in that conversation. If you're unsure, rotating it via Supabase dashboard → Project Settings → API → "Reset service_role key" takes ~30 seconds and removes any doubt. After rotating, you'd need to re-add the new value to Vercel and redeploy.
+
 **Why:** TradingView webhook returns 500 without it. If this isn't set, no webhook trade has ever inserted in prod.
 
 **Files:** Vercel project → Settings → Environment Variables
@@ -167,6 +185,29 @@ These are the loose ends most likely to make the app feel like a demo. Settings 
 ---
 
 ### 11. `[~]` Daily TradeLocker sync via Vercel Cron
+
+> **🟢 RESUME HERE — picked up 2026-05-09**
+>
+> Status: **almost done, just needs a 2-min test.**
+>
+> What's already done:
+> - ✅ `CRON_SECRET` is set in Vercel (verified via `npx vercel env ls production` — listed as Encrypted, set 6 days ago).
+> - ✅ `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel (same — see #8).
+> - ✅ Production redeployed today so the cron route can read both env vars.
+> - ✅ Vercel.json has the schedule entry — Vercel will auto-run the cron at 06:00 UTC daily.
+>
+> What's left — **two steps, both optional verification**:
+> 1. Confirm Vercel actually registered the cron schedule:
+>    - Open the Vercel dashboard → your project → **Settings → Cron Jobs**.
+>    - You should see `/api/cron/sync-tradelocker` listed with schedule `0 6 * * *`.
+>    - If yes → schedule is live, the cron will run automatically tonight.
+> 2. Optional manual test (only if you want to confirm right now without waiting 24 hours):
+>    - In your terminal: `cd /Users/bovadagod/Downloads/4x-journal/app && npx vercel env pull .env.local` (this writes Vercel's env vars into your local file so `$CRON_SECRET` is available).
+>    - Then: `source .env.local && curl -H "Authorization: Bearer $CRON_SECRET" https://4x-journal.vercel.app/api/cron/sync-tradelocker`
+>    - Expect JSON like `{"ok":true,"results":[...]}` with per-connection results.
+>    - 401 means CRON_SECRET mismatch; 500 means SUPABASE_SERVICE_ROLE_KEY is wrong.
+>
+> Once you've confirmed step 1 (or step 1 + 2), flip this item to `[x]`. If anything errors, tell me and I'll help debug.
 
 **Why:** Manual sync only today. Daily cron → "wake up and yesterday's trades are already there" is a real magic moment.
 
@@ -1023,7 +1064,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 60. `[~]` Pip-value resolved at trade time
+### 60. `[x]` Pip-value resolved at trade time
 
 **Why:** Pip-value depends on account currency, contract size, and quote currency. Computing it at fill time and storing on `trade_fills` makes every "average pips" analytic currency-correct without ad-hoc downstream conversion.
 
@@ -1036,6 +1077,8 @@ Items 57–61 require small migrations + write-side changes.
 **Acceptance:** New fills have non-null `pip_value_acct`. Backfill populates historical fills from current FX rates. Pip-based analytics use it directly.
 
 **Effort:** ~3 hours
+
+**Notes (forward-write, 2026-05-08):** Shipped via shared `lib/pip-value-context.ts` — exposes `loadPipValueContext({supabase, userId})` (one DB hit per sync/import to fetch fx_rates + per-account currency map) and pure `computePipValueAcct({pair, accountId, sizeUnits, ctx})`. Wired into all three fill insert paths: TL importer (cron-safe — uses the connection's `user_id`, works with both cookie-auth and service-role clients), CSV importer, and manual `createTrade`. New fills land with `pip_value_acct` populated; rows where the rate map can't price the pair (metals/indices with no rate set) stay null and the existing backfill action retries them once the user adds the missing rate.
 
 ---
 
@@ -1083,7 +1126,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 64. `[~]` Per-page widget reorder + hide
+### 64. `[x]` Per-page widget reorder + hide
 
 **Why:** Dashboard has 15+ widgets — drag-to-reorder + hide-toggle is a real user need. Persist to user_settings.
 
@@ -1094,6 +1137,8 @@ Items 57–61 require small migrations + write-side changes.
 **Acceptance:** Reorder a card → reload → order persists.
 
 **Effort:** ~half day
+
+**Notes (drag-reorder, 2026-05-08):** Shipped a row-level reorder model — 15 stable row IDs in `lib/dashboard-layout.ts` (`ROW_CATALOG`), each one a logical chunk of the dashboard (single widget or grid pair). The dashboard page now switch/cases over `resolveRowOrder(layout)` instead of hardcoded JSX order, so saved row order drives render order. Customize popover gained a tabs UI: **Widgets** (existing per-widget hide checkboxes) and **Reorder** (new drag-reorderable list of rows with up/down arrow fallbacks). HTML5 native drag-and-drop — no library added. New `setDashboardLayoutOrder` server action persists to the same `user_settings.dashboard_layout` JSONB (`{hidden, order}` shape was already present). New rows added in future releases auto-append at the bottom via the missing-ID fallback in `resolveRowOrder`. Pair-grouped rows (e.g. `equity-curve + risk-gauge + margin-call + session-clock`) move as a unit, preserving the grid layout.
 
 ---
 
@@ -1197,7 +1242,7 @@ Items 57–61 require small migrations + write-side changes.
 
 ---
 
-### 72. `[~]` Coach AI suggestions → enforceable rules
+### 72. `[x]` Coach AI suggestions → enforceable rules
 
 **Why:** When Coach says "stop shorts on EUR/USD — your edge is statistically negative," offer "Add as a rule" → creates a per-pair-side block on the Log Trade modal. Closes the loop from insight → behavior change.
 
@@ -1209,6 +1254,8 @@ Items 57–61 require small migrations + write-side changes.
 **Acceptance:** Click "Add rule" on a Coach suggestion → block appears in Settings → Rules → next attempt to log a matching trade triggers the warning.
 
 **Effort:** ~half day
+
+**Notes (auto-promote CTA, 2026-05-08):** `CoachNudge` widget's suggestion pills now extract pair + side heuristically (regex `[A-Z]{3}/[A-Z]{3}` and `\b(long|short)\b`); when both resolve, an "Add as rule" button appears next to the pill. Clicking opens a tiny inline form (Block Longs/Shorts on PAIR) prefilled with the detected values; user can edit, click Save, and the existing `createTradeRule` server action persists with `source: "coach"` and `reason: <action sentence>` so the rules list shows where it came from. After save, the pill flips to "✓ Rule saved" inline. Suggestions where pair-side can't be detected (e.g. "Reduce risk per trade") don't render the CTA — keeps the surface honest about the v1 scope (`block_pair_side` is the only rule kind today). The pre-flight wiring on Log Trade modal already activates the rule once saved.
 
 ---
 
@@ -1292,3 +1339,4 @@ Record decisions to defer or skip items here so the reasoning isn't lost.
   - **Batch 3** (commit d8b67cc): #69 Coach AI chat mode (multi-turn, capped at 20 messages/conversation), #72 trade rules (block_pair_side kind in v1, settings panel + LogTradeModal pre-flight check). 2 new tables with RLS-owner-scoped CRUD.
   - **Deferred from this session**: #75 social/leaderboard (half-week scope, separate session), #71 voice journal (needs Whisper API key — Anthropic SDK doesn't do audio), #73 mobile native (App Store accounts), #74 backtest (needs more #58 work first), #76 WebSocket (hosted listener), #77 MT4/cTrader (broker partner accounts).
   - **Partial shipments marked `[~]`**: #60 (forward-write integration follow-up), #64 (drag-reorder follow-up), #72 (Coach-suggestion → rule auto-promotion follow-up).
+- **2026-05-08** — Closed all three of yesterday's `[~]` follow-ups in one batch: #60 forward-write (shared `pip-value-context.ts` wired into TL importer / CSV importer / manual createTrade), #64 drag-reorder (15-row catalog + tabbed customize popover with HTML5 drag-and-drop and arrow-button fallbacks), #72 auto-promote ("Add as rule" CTA on Coach suggestion pills with heuristic pair/side extraction). Build + 140 tests green. Remaining `[~]`: #8 + #11 (both blocked on user action — paste `SUPABASE_SERVICE_ROLE_KEY` + `CRON_SECRET` into Vercel env vars; no automation can do this).

@@ -29,7 +29,7 @@ import { WeeklyRetrospectiveCard } from "@/components/dashboard/weekly-retrospec
 import { PropPhaseCard } from "@/components/dashboard/prop-phase-card"
 import { CustomizeWidgetsButton } from "@/components/dashboard/customize-widgets-button"
 import { CoachChatTrigger } from "@/components/dashboard/coach-chat-trigger"
-import { parseDashboardLayout, isWidgetVisible } from "@/lib/dashboard-layout"
+import { parseDashboardLayout, isWidgetVisible, resolveRowOrder } from "@/lib/dashboard-layout"
 import { createClient } from "@/lib/supabase/server"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { RangeFilterBar } from "@/components/shell/range-filter-bar"
@@ -98,68 +98,80 @@ export default async function DashboardPage({
 
       <ScopeBanner />
 
-      {v("ticker-tape") && <TickerTape />}
-
-      {showAdvanced && v("coach-nudge") && <CoachNudge stats={stats} />}
-
-      {showAdvanced && v("weekly-retro") && <WeeklyRetrospectiveCard />}
-
-      {v("pnl-strip") && <PnLStrip today={pnl.today} week={pnl.week} month={pnl.month} />}
-
-      {v("today-plan") && <TodayPlanCard />}
-
-      {v("prop-phase") && <PropPhaseCard />}
-
-      {showAdvanced && v("correlation-warning") && <CorrelationWarning />}
-
-      {(v("pip-stats") || v("streak-card")) && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
-          {v("pip-stats") && <PipStatsCard trades={recentTrades} />}
-          {v("streak-card") && <StreakCard trades={recentTrades} periodLabel="recent" />}
-        </div>
-      )}
-
-      {(v("equity-curve") || v("risk-gauge") || v("margin-call") || v("session-clock")) && (
-        <div className="grid-2-1">
-          {v("equity-curve") && <EquityCurveCard points={equity} />}
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
-            {v("risk-gauge") && <RiskGauge />}
-            {v("margin-call") && <MarginCallCard />}
-            {v("session-clock") && <SessionClock />}
-          </div>
-        </div>
-      )}
-
-      {v("live-pnl") && <LivePnlStrip />}
-
-      {v("open-positions") && <OpenPositions trades={openTrades} />}
-
-      {v("recent-trades") && <RecentTrades trades={recentTrades} />}
-
-      {showAdvanced && v("analytics-summary") && <AnalyticsSummary stats={stats} pairs={pairs} />}
-
-      {(v("journal-feed") || v("mood-checkin") || v("watchlist")) && (
-        <div className="grid-2-1">
-          {v("journal-feed") && <JournalFeed entries={recentEntries} trades={recentTrades} />}
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
-            {v("mood-checkin") && (
-              <MoodCheckIn
-                initialMood={discipline.todayMood as never}
-                rulesFollowedPct={discipline.rulesFollowedPct}
-                streakDays={discipline.streakDays}
-              />
-            )}
-            {v("watchlist") && <WatchlistWidget />}
-          </div>
-        </div>
-      )}
-
-      {(v("playbooks-card") || v("calendar-card")) && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "var(--density-gap)" }}>
-          {v("playbooks-card") && <PlaybooksCard playbooks={playbooks} />}
-          {v("calendar-card") && <CalendarCard events={events} />}
-        </div>
-      )}
+      {resolveRowOrder(layout).map((row) => {
+        if (row.requiresAdvanced && !showAdvanced) return null
+        switch (row.id) {
+          case "row-ticker":
+            return v("ticker-tape") ? <TickerTape key={row.id} /> : null
+          case "row-coach":
+            return v("coach-nudge") ? <CoachNudge key={row.id} stats={stats} /> : null
+          case "row-weekly-retro":
+            return v("weekly-retro") ? <WeeklyRetrospectiveCard key={row.id} /> : null
+          case "row-pnl":
+            return v("pnl-strip") ? <PnLStrip key={row.id} today={pnl.today} week={pnl.week} month={pnl.month} /> : null
+          case "row-today-plan":
+            return v("today-plan") ? <TodayPlanCard key={row.id} /> : null
+          case "row-prop-phase":
+            return v("prop-phase") ? <PropPhaseCard key={row.id} /> : null
+          case "row-correlation":
+            return v("correlation-warning") ? <CorrelationWarning key={row.id} /> : null
+          case "row-pip-streak":
+            if (!v("pip-stats") && !v("streak-card")) return null
+            return (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--density-gap)" }}>
+                {v("pip-stats") && <PipStatsCard trades={recentTrades} />}
+                {v("streak-card") && <StreakCard trades={recentTrades} periodLabel="recent" />}
+              </div>
+            )
+          case "row-equity-side":
+            if (!v("equity-curve") && !v("risk-gauge") && !v("margin-call") && !v("session-clock")) return null
+            return (
+              <div key={row.id} className="grid-2-1">
+                {v("equity-curve") && <EquityCurveCard points={equity} />}
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
+                  {v("risk-gauge") && <RiskGauge />}
+                  {v("margin-call") && <MarginCallCard />}
+                  {v("session-clock") && <SessionClock />}
+                </div>
+              </div>
+            )
+          case "row-live-pnl":
+            return v("live-pnl") ? <LivePnlStrip key={row.id} /> : null
+          case "row-open-positions":
+            return v("open-positions") ? <OpenPositions key={row.id} trades={openTrades} /> : null
+          case "row-recent-trades":
+            return v("recent-trades") ? <RecentTrades key={row.id} trades={recentTrades} /> : null
+          case "row-analytics":
+            return v("analytics-summary") ? <AnalyticsSummary key={row.id} stats={stats} pairs={pairs} /> : null
+          case "row-journal-side":
+            if (!v("journal-feed") && !v("mood-checkin") && !v("watchlist")) return null
+            return (
+              <div key={row.id} className="grid-2-1">
+                {v("journal-feed") && <JournalFeed entries={recentEntries} trades={recentTrades} />}
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--density-gap)" }}>
+                  {v("mood-checkin") && (
+                    <MoodCheckIn
+                      initialMood={discipline.todayMood as never}
+                      rulesFollowedPct={discipline.rulesFollowedPct}
+                      streakDays={discipline.streakDays}
+                    />
+                  )}
+                  {v("watchlist") && <WatchlistWidget />}
+                </div>
+              </div>
+            )
+          case "row-playbook-cal":
+            if (!v("playbooks-card") && !v("calendar-card")) return null
+            return (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "var(--density-gap)" }}>
+                {v("playbooks-card") && <PlaybooksCard playbooks={playbooks} />}
+                {v("calendar-card") && <CalendarCard events={events} />}
+              </div>
+            )
+          default:
+            return null
+        }
+      })}
 
       <CoachChatTrigger />
     </>

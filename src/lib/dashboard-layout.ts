@@ -56,3 +56,56 @@ export function parseDashboardLayout(raw: unknown): DashboardLayout {
 export function isWidgetVisible(id: string, layout: DashboardLayout): boolean {
   return !layout.hidden.includes(id)
 }
+
+/**
+ * Dashboard rows — stable IDs the user can reorder. Rows can contain a single
+ * widget (most) or a pair grouped in one of the page's grid containers.
+ *
+ * Each row has a `requiresAdvanced` flag — these are gated behind the
+ * Lite/Full mode toggle (resolved separately in the page).
+ */
+export type DashboardRow = {
+  id: string
+  label: string
+  widgets: string[]
+  requiresAdvanced?: boolean
+}
+
+export const ROW_CATALOG: DashboardRow[] = [
+  { id: "row-ticker",        label: "Ticker tape",            widgets: ["ticker-tape"] },
+  { id: "row-coach",         label: "Coach AI Daily Brief",   widgets: ["coach-nudge"], requiresAdvanced: true },
+  { id: "row-weekly-retro",  label: "Weekly Retrospective",   widgets: ["weekly-retro"], requiresAdvanced: true },
+  { id: "row-pnl",           label: "P&L strip",              widgets: ["pnl-strip"] },
+  { id: "row-today-plan",    label: "Today's plan",           widgets: ["today-plan"] },
+  { id: "row-prop-phase",    label: "Prop firm tracker",      widgets: ["prop-phase"] },
+  { id: "row-correlation",   label: "Correlation warning",    widgets: ["correlation-warning"], requiresAdvanced: true },
+  { id: "row-pip-streak",    label: "Pip stats / Streak",     widgets: ["pip-stats", "streak-card"] },
+  { id: "row-equity-side",   label: "Equity curve · Risk · Margin · Session", widgets: ["equity-curve", "risk-gauge", "margin-call", "session-clock"] },
+  { id: "row-live-pnl",      label: "Live P&L",               widgets: ["live-pnl"] },
+  { id: "row-open-positions", label: "Open positions",        widgets: ["open-positions"] },
+  { id: "row-recent-trades", label: "Recent trades",          widgets: ["recent-trades"] },
+  { id: "row-analytics",     label: "Analytics summary",      widgets: ["analytics-summary"], requiresAdvanced: true },
+  { id: "row-journal-side",  label: "Journal · Mood · Watchlist", widgets: ["journal-feed", "mood-checkin", "watchlist"] },
+  { id: "row-playbook-cal",  label: "Playbooks · Calendar",   widgets: ["playbooks-card", "calendar-card"] },
+]
+
+/**
+ * Resolve the user's saved row order against the catalog. Saved IDs that no
+ * longer exist are dropped silently; new rows that aren't in the saved order
+ * are appended at the end (so a new release surfaces them rather than hiding
+ * them).
+ */
+export function resolveRowOrder(layout: DashboardLayout): DashboardRow[] {
+  const saved = layout.order ?? []
+  const byId = new Map(ROW_CATALOG.map((r) => [r.id, r]))
+  const seen = new Set<string>()
+  const ordered: DashboardRow[] = []
+  for (const id of saved) {
+    const row = byId.get(id)
+    if (row && !seen.has(id)) { ordered.push(row); seen.add(id) }
+  }
+  for (const row of ROW_CATALOG) {
+    if (!seen.has(row.id)) { ordered.push(row); seen.add(row.id) }
+  }
+  return ordered
+}
