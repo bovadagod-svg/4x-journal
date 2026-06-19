@@ -93,6 +93,13 @@ function ProgressBadge({ actual, target, meta }: { actual: number | null; target
   )
 }
 
+// RGB triples for our tone tokens, so we can build valid rgba() gradient stops.
+// (Appending an "88" alpha suffix to a `var(--c-...)` is NOT valid CSS — it
+// silently invalidates the whole gradient and the fill renders transparent.)
+function toneRgb(tone: "green" | "amber" | "red"): string {
+  return tone === "green" ? "17, 196, 88" : tone === "amber" ? "229, 162, 59" : "190, 51, 61"
+}
+
 function pctToTarget(actual: number, target: number, dir: "higher" | "lower"): number {
   if (dir === "higher") {
     if (target <= 0) return actual >= target ? 100 : 0
@@ -121,7 +128,11 @@ function SymmetricBar({ actual, target, metric, actuals }: {
 
   const isProfit = a >= 0
   const fillColor = isProfit ? "var(--c-green-bright)" : "var(--c-red-bright)"
-  const fillBg = isProfit ? "rgba(17, 196, 88, 0.18)" : "rgba(190, 51, 61, 0.18)"
+  const rgb = toneRgb(isProfit ? "green" : "red")
+  // Strong toward the center anchor, fading outward.
+  const fillGradient = isProfit
+    ? `linear-gradient(90deg, rgba(${rgb}, 0.85), rgba(${rgb}, 0.35))`
+    : `linear-gradient(90deg, rgba(${rgb}, 0.35), rgba(${rgb}, 0.85))`
 
   // Precompute the bar geometry as plain numbers. We must NOT build a string
   // like `calc(50% + ${pctFromMiddle}%)` because a negative pctFromMiddle
@@ -171,7 +182,7 @@ function SymmetricBar({ actual, target, metric, actuals }: {
             top: 0, bottom: 0,
             left: `${fillLeftPct}%`,
             width: `${fillWidthPct}%`,
-            background: `linear-gradient(90deg, ${fillBg}, ${fillColor}88)`,
+            background: fillGradient,
             transition: "left 0.4s, width 0.4s",
           }} />
         )}
@@ -208,8 +219,10 @@ function LinearBar({ actual, target, meta }: {
   const passed = meta.direction === "higher" ? a >= target : a <= target
   // For lower-is-better: tone is green when within target, red when over.
   // For higher-is-better: tone is green when at/over target, amber while approaching.
+  const tone = passed ? "green" : (meta.direction === "lower" ? "red" : "amber")
   const fillColor = passed ? "var(--c-green-bright)" : (meta.direction === "lower" ? "var(--c-red-bright)" : "var(--c-amber)")
-  const fillBg = passed ? "rgba(17, 196, 88, 0.18)" : (meta.direction === "lower" ? "rgba(190, 51, 61, 0.18)" : "rgba(229, 162, 59, 0.18)")
+  const rgb = toneRgb(tone)
+  const fillGradient = `linear-gradient(90deg, rgba(${rgb}, 0.35), rgba(${rgb}, 0.85))`
 
   return (
     <div>
@@ -230,7 +243,7 @@ function LinearBar({ actual, target, meta }: {
       <div style={{ position: "relative", height: 14, background: "var(--c-bg-elev-3)", borderRadius: 7, overflow: "hidden" }}>
         <div style={{
           position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`,
-          background: `linear-gradient(90deg, ${fillBg}, ${fillColor}88)`,
+          background: fillGradient,
           transition: "width 0.4s",
         }} />
         <div style={{
