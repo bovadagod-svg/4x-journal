@@ -123,6 +123,14 @@ function SymmetricBar({ actual, target, metric, actuals }: {
   const fillColor = isProfit ? "var(--c-green-bright)" : "var(--c-red-bright)"
   const fillBg = isProfit ? "rgba(17, 196, 88, 0.18)" : "rgba(190, 51, 61, 0.18)"
 
+  // Precompute the bar geometry as plain numbers. We must NOT build a string
+  // like `calc(50% + ${pctFromMiddle}%)` because a negative pctFromMiddle
+  // yields `calc(50% + -6.3%)` — the malformed `+ -` operator is invalid CSS,
+  // the browser drops the rule, and the drawdown fill lands in the wrong spot.
+  const fillLeftPct = pctFromMiddle >= 0 ? 50 : 50 + pctFromMiddle  // left edge of fill
+  const fillWidthPct = Math.abs(pctFromMiddle)                       // extent from center
+  const labelCenterPct = 50 + pctFromMiddle                         // center of floating number
+
   // Marker labels under the bar
   const startLabel = `start ${formatStartingBalance(metric, actuals)}`
   const drawdownLabel = formatTargetSide(metric, -target_, actuals.startingBalance)
@@ -131,15 +139,17 @@ function SymmetricBar({ actual, target, metric, actuals }: {
   return (
     <div>
       {/* Number + percent shown above the fill */}
-      <div style={{ position: "relative", height: 22, marginBottom: 6 }}>
+      <div style={{ position: "relative", height: 34, marginBottom: 4 }}>
         {actual != null && (
           <div
             style={{
               position: "absolute",
-              left: `calc(50% + ${pctFromMiddle}% - 60px)`,
+              bottom: 0,
+              left: `calc(${labelCenterPct}% - 60px)`,
               width: 120,
               textAlign: "center",
               fontSize: 12,
+              lineHeight: 1.25,
               fontWeight: 600,
               color: fillColor,
               transform: a > target_ ? "translateX(-12px)" : a < -target_ ? "translateX(12px)" : "none",
@@ -159,8 +169,8 @@ function SymmetricBar({ actual, target, metric, actuals }: {
           <div style={{
             position: "absolute",
             top: 0, bottom: 0,
-            left: pctFromMiddle >= 0 ? "50%" : `calc(50% + ${pctFromMiddle}%)`,
-            width: `${Math.abs(pctFromMiddle)}%`,
+            left: `${fillLeftPct}%`,
+            width: `${fillWidthPct}%`,
             background: `linear-gradient(90deg, ${fillBg}, ${fillColor}88)`,
             transition: "left 0.4s, width 0.4s",
           }} />
