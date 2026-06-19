@@ -67,7 +67,9 @@ export async function inviteMember(
     p_team_id: teamId, p_email: clean, p_role: role,
   })
   if (error) return { ok: false, error: error.message }
-  revalidatePath("/settings")
+  // A new member changes attribution maps + owner pickers app-wide, not just
+  // the Team settings page.
+  revalidateEverything()
   return { ok: true }
 }
 
@@ -101,6 +103,6 @@ export async function changeMemberRole(
   const { error } = await supabase
     .from("team_members").update({ role }).eq("team_id", teamId).eq("user_id", userId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath("/settings")
+  revalidateEverything()
   return { ok: true }
 }
