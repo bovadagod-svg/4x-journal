@@ -108,6 +108,12 @@ export async function POST(
     return NextResponse.json({ error: "no account on file for user" }, { status: 400 })
   }
 
+  // Team this trade belongs to (service-role insert → no auth.uid(), so the
+  // auto-stamp trigger can't derive it). Mirror the account's team.
+  const { data: acctTeam } = await admin
+    .from("accounts").select("team_id").eq("id", accountId).maybeSingle()
+  const teamId = acctTeam?.team_id ?? null
+
   const r = computeR({ side: side as "long" | "short", entry, stop, exit })
   const pnl = computePnL({ side: side as "long" | "short", entry, exit, size })
 
@@ -115,6 +121,7 @@ export async function POST(
     .from("trades")
     .insert({
       user_id: userId,
+      team_id: teamId,
       account_id: accountId,
       pair,
       side,

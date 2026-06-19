@@ -173,6 +173,15 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
   if (error || !conn) return { ok: false, error: error?.message ?? "Connection not found." }
 
   const userId = conn.user_id
+  // Team this connection's data belongs to. Service-role syncs (cron) have no
+  // auth.uid(), so the auto-stamp trigger can't derive team_id — we set it
+  // explicitly from the connection (backfilled), falling back to the account.
+  let teamId = conn.team_id as string | null
+  if (!teamId) {
+    const { data: acct } = await supabase
+      .from("accounts").select("team_id").eq("id", conn.account_id).maybeSingle()
+    teamId = acct?.team_id ?? null
+  }
 
   const creds = conn.credentials as { email?: string; password?: string; server?: string; env?: TradeLockerEnv }
   const meta = conn.external_account_meta as { accNum?: string }
@@ -254,6 +263,7 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
   const all = [...pull.open, ...pull.closed]
   const rows = all.map((p) => ({
     user_id: userId,
+    team_id: teamId,
     account_id: conn.account_id,
     external_id: p.externalId,
     external_provider: "tradelocker",
@@ -310,6 +320,7 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
     type FillInsert = {
       trade_id: string
       user_id: string
+      team_id: string | null
       kind: "entry" | "exit"
       reason: "broker_sync"
       price: number
@@ -345,6 +356,7 @@ async function _syncTradeLockerCore(connectionId: string, supabase: Supa): Promi
         fills.push({
           trade_id: tradeId,
           user_id: userId,
+          team_id: teamId,
           kind: f.kind,
           reason: "broker_sync",
           price: f.price,

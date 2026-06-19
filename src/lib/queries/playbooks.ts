@@ -28,8 +28,9 @@ export async function ensureSystemPlaybooks(): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  const { data: existing } = await supabase
-    .from("playbooks").select("name").eq("user_id", user.id)
+  // Team-wide check (RLS already scopes to the user's team) so we don't create
+  // a duplicate "Invalid Trades" per teammate.
+  const { data: existing } = await supabase.from("playbooks").select("name")
   const names = new Set((existing ?? []).map((p) => p.name))
   const missing = SYSTEM_PLAYBOOKS.filter((sp) => !names.has(sp.name))
   if (missing.length === 0) return

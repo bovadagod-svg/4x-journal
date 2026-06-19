@@ -38,6 +38,7 @@ export type Database = {
           prop_starting_balance: number | null
           status: string
           swap_total: number | null
+          team_id: string | null
           updated_at: string
           user_id: string
         }
@@ -64,6 +65,7 @@ export type Database = {
           prop_starting_balance?: number | null
           status?: string
           swap_total?: number | null
+          team_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -90,10 +92,19 @@ export type Database = {
           prop_starting_balance?: number | null
           status?: string
           swap_total?: number | null
+          team_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "accounts_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       broker_connections: {
         Row: {
@@ -108,6 +119,7 @@ export type Database = {
           last_sync_status: string | null
           last_synced_at: string | null
           provider: string
+          team_id: string | null
           tokens: Json | null
           trades_synced: number
           updated_at: string
@@ -125,6 +137,7 @@ export type Database = {
           last_sync_status?: string | null
           last_synced_at?: string | null
           provider: string
+          team_id?: string | null
           tokens?: Json | null
           trades_synced?: number
           updated_at?: string
@@ -142,6 +155,7 @@ export type Database = {
           last_sync_status?: string | null
           last_synced_at?: string | null
           provider?: string
+          team_id?: string | null
           tokens?: Json | null
           trades_synced?: number
           updated_at?: string
@@ -153,6 +167,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broker_connections_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -231,6 +252,7 @@ export type Database = {
           metric: string
           period: string
           target_value: number
+          team_id: string | null
           updated_at: string
           user_id: string
         }
@@ -241,6 +263,7 @@ export type Database = {
           metric: string
           period: string
           target_value: number
+          team_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -251,10 +274,19 @@ export type Database = {
           metric?: string
           period?: string
           target_value?: number
+          team_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "goals_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       journal_entries: {
         Row: {
@@ -283,6 +315,7 @@ export type Database = {
           screenshots: Json
           share_token: string | null
           tags: string[]
+          team_id: string | null
           title: string | null
           trade_id: string | null
           user_id: string
@@ -313,6 +346,7 @@ export type Database = {
           screenshots?: Json
           share_token?: string | null
           tags?: string[]
+          team_id?: string | null
           title?: string | null
           trade_id?: string | null
           user_id: string
@@ -343,6 +377,7 @@ export type Database = {
           screenshots?: Json
           share_token?: string | null
           tags?: string[]
+          team_id?: string | null
           title?: string | null
           trade_id?: string | null
           user_id?: string
@@ -360,6 +395,13 @@ export type Database = {
             columns: ["playbook_id"]
             isOneToOne: false
             referencedRelation: "playbooks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entries_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
           {
@@ -387,6 +429,7 @@ export type Database = {
           sessions: string[]
           status: string
           target_r: number | null
+          team_id: string | null
           timeframe: string | null
           updated_at: string
           user_id: string
@@ -406,6 +449,7 @@ export type Database = {
           sessions?: string[]
           status?: string
           target_r?: number | null
+          team_id?: string | null
           timeframe?: string | null
           updated_at?: string
           user_id: string
@@ -425,11 +469,20 @@ export type Database = {
           sessions?: string[]
           status?: string
           target_r?: number | null
+          team_id?: string | null
           timeframe?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "playbooks_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       push_subscriptions: {
         Row: {
@@ -494,6 +547,7 @@ export type Database = {
           max_risk_per_trade_pct: number | null
           max_risk_per_trade_usd: number | null
           prop_firm_template: string | null
+          team_id: string | null
           updated_at: string
           user_id: string
         }
@@ -508,6 +562,7 @@ export type Database = {
           max_risk_per_trade_pct?: number | null
           max_risk_per_trade_usd?: number | null
           prop_firm_template?: string | null
+          team_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -522,6 +577,7 @@ export type Database = {
           max_risk_per_trade_pct?: number | null
           max_risk_per_trade_usd?: number | null
           prop_firm_template?: string | null
+          team_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -533,7 +589,70 @@ export type Database = {
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "risk_rules_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      team_members: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          team_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: string
+          team_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          team_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       trade_fills: {
         Row: {
@@ -558,6 +677,7 @@ export type Database = {
           size: number
           swap: number | null
           tax: number | null
+          team_id: string | null
           trade_id: string
           user_id: string
         }
@@ -583,6 +703,7 @@ export type Database = {
           size: number
           swap?: number | null
           tax?: number | null
+          team_id?: string | null
           trade_id: string
           user_id: string
         }
@@ -608,10 +729,18 @@ export type Database = {
           size?: number
           swap?: number | null
           tax?: number | null
+          team_id?: string | null
           trade_id?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trade_fills_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trade_fills_trade_id_fkey"
             columns: ["trade_id"]
@@ -654,6 +783,7 @@ export type Database = {
           stop_price: number | null
           tags: string[]
           target_price: number | null
+          team_id: string | null
           updated_at: string
           user_id: string
         }
@@ -689,6 +819,7 @@ export type Database = {
           stop_price?: number | null
           tags?: string[]
           target_price?: number | null
+          team_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -724,6 +855,7 @@ export type Database = {
           stop_price?: number | null
           tags?: string[]
           target_price?: number | null
+          team_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -742,12 +874,20 @@ export type Database = {
             referencedRelation: "playbooks"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "trades_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
         ]
       }
       user_settings: {
         Row: {
           accent: string
           account_scope: string
+          active_team_id: string | null
           atr_multiplier: number
           atr_period: number
           avatar_url: string | null
@@ -803,6 +943,7 @@ export type Database = {
         Insert: {
           accent?: string
           account_scope?: string
+          active_team_id?: string | null
           atr_multiplier?: number
           atr_period?: number
           avatar_url?: string | null
@@ -858,6 +999,7 @@ export type Database = {
         Update: {
           accent?: string
           account_scope?: string
+          active_team_id?: string | null
           atr_multiplier?: number
           atr_period?: number
           avatar_url?: string | null
@@ -912,6 +1054,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "user_settings_active_team_id_fkey"
+            columns: ["active_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "user_settings_default_playbook_id_fkey"
             columns: ["default_playbook_id"]
             isOneToOne: false
@@ -930,6 +1079,7 @@ export type Database = {
           reason: string | null
           severity: string
           source: string
+          team_id: string | null
           updated_at: string
           user_id: string
         }
@@ -942,6 +1092,7 @@ export type Database = {
           reason?: string | null
           severity?: string
           source?: string
+          team_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -954,10 +1105,19 @@ export type Database = {
           reason?: string | null
           severity?: string
           source?: string
+          team_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_trade_rules_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       watchlist_pairs: {
         Row: {
@@ -967,6 +1127,7 @@ export type Database = {
           pair: string
           setup_note: string | null
           sort_order: number
+          team_id: string | null
           updated_at: string
           user_id: string
         }
@@ -977,6 +1138,7 @@ export type Database = {
           pair: string
           setup_note?: string | null
           sort_order?: number
+          team_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -987,20 +1149,32 @@ export type Database = {
           pair?: string
           setup_note?: string | null
           sort_order?: number
+          team_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_pairs_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      auth_team_ids: { Args: never; Returns: string[] }
       consume_rate_limit: {
         Args: { p_key: string; p_window_seconds: number }
         Returns: number
       }
+      create_team: { Args: { p_name: string }; Returns: string }
+      current_team_id: { Args: never; Returns: string }
       get_entry_by_share_token: {
         Args: { p_token: string }
         Returns: {
@@ -1055,6 +1229,8 @@ export type Database = {
           win_count: number
         }[]
       }
+      is_team_admin: { Args: { p_team_id: string }; Returns: boolean }
+      is_team_member: { Args: { p_team_id: string }; Returns: boolean }
       recompute_trade_aggregates: {
         Args: { p_trade_id: string }
         Returns: undefined
