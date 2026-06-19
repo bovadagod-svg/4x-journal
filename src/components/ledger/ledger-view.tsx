@@ -13,14 +13,19 @@ export function LedgerView({
   playbookMap,
   traderMap = {},
   accountOwnerMap = {},
+  initialDate = null,
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
   playbookMap: Map<string, string>
   traderMap?: Record<string, string>
   accountOwnerMap?: Record<string, string>
+  /** Seed the day filter (e.g. arriving from a calendar cell via ?date=). */
+  initialDate?: string | null
 }) {
-  const [filters, setFilters] = useState<LedgerFilters>(EMPTY_FILTERS)
+  const [filters, setFilters] = useState<LedgerFilters>(
+    initialDate ? { ...EMPTY_FILTERS, date: initialDate } : EMPTY_FILTERS,
+  )
 
   const allPairs = useMemo(() => Array.from(new Set(trades.map((t) => t.pair))).sort(), [trades])
   const allSetups = useMemo(() => Array.from(new Set(Array.from(playbookMap.values()))).sort(), [playbookMap])

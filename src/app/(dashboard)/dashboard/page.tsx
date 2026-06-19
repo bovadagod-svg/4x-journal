@@ -21,6 +21,7 @@ import { AnalyticsSummary } from "@/components/dashboard/analytics-summary"
 import { SessionClock } from "@/components/dashboard/session-clock"
 import { PlaybooksCard } from "@/components/dashboard/playbooks-card"
 import { CalendarCard } from "@/components/dashboard/calendar-card"
+import { TradingCalendar } from "@/components/dashboard/trading-calendar"
 import { MoodCheckIn } from "@/components/dashboard/mood-checkin"
 import { PipStatsCard } from "@/components/dashboard/pip-stats-card"
 import { StreakCard } from "@/components/dashboard/streak-card"
@@ -64,7 +65,12 @@ export default async function DashboardPage({
   }
   const v = (id: string) => isWidgetVisible(id, layout)
 
-  const [pnl, openTrades, recentEntries, recentTrades, equity, stats, pairs, playbooks, events, discipline] = await Promise.all([
+  // Trading Calendar always shows the last 12 weeks of entry-day P&L,
+  // independent of the page range filter.
+  const calFromIso = new Date(Date.now() - 84 * 24 * 60 * 60 * 1000).toISOString()
+  const calToIso = new Date().toISOString()
+
+  const [pnl, openTrades, recentEntries, recentTrades, equity, stats, pairs, playbooks, events, discipline, calendarTrades] = await Promise.all([
     getPnLByPeriod(),                                          // today/week/month — fixed buckets, ignores range
     getOpenTrades(),                                           // current open positions — always live
     getJournalEntries({ limit: 5 }),                           // 5 most recent — always recent
@@ -75,6 +81,7 @@ export default async function DashboardPage({
     getPlaybooksWithStats(),                                   // overall playbook stats
     getUpcomingEvents({ currencies: watchCurrencies.length > 0 ? watchCurrencies : undefined, limit: 8 }),
     getDisciplineStats(),
+    getUserTrades({ limit: 2000, from: calFromIso, to: calToIso }), // trading calendar — fixed 12-week window
   ])
 
   // Effective mode: in auto, lite when sample is below 50 closed trades.
@@ -141,6 +148,8 @@ export default async function DashboardPage({
             return v("open-positions") ? <OpenPositions key={row.id} trades={openTrades} /> : null
           case "row-recent-trades":
             return v("recent-trades") ? <RecentTrades key={row.id} trades={recentTrades} /> : null
+          case "row-trading-calendar":
+            return v("trading-calendar") ? <TradingCalendar key={row.id} trades={calendarTrades} /> : null
           case "row-analytics":
             return v("analytics-summary") ? <AnalyticsSummary key={row.id} stats={stats} pairs={pairs} /> : null
           case "row-journal-side":

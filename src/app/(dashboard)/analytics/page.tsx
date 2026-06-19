@@ -7,6 +7,7 @@ import { getFillsForTrades } from "@/lib/queries/trade-fills"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { AnalyticsView } from "@/components/analytics/analytics-view"
+import { TradingCalendar } from "@/components/dashboard/trading-calendar"
 import { RangeFilterBar } from "@/components/shell/range-filter-bar"
 import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
 
@@ -24,12 +25,18 @@ export default async function AnalyticsPage({
   // For "All" range there is no previous window — comparisons hide.
   const prev = previousPeriodIso(fromIso, toIso)
 
-  const [trades, entries, prevEntries, playbooks, accounts] = await Promise.all([
+  // Trading Calendar always shows the last 12 weeks of entry-day P&L,
+  // independent of the analytics range filter.
+  const calFromIso = new Date(Date.now() - 84 * 24 * 60 * 60 * 1000).toISOString()
+  const calToIso = new Date().toISOString()
+
+  const [trades, entries, prevEntries, playbooks, accounts, calendarTrades] = await Promise.all([
     getUserTrades({ limit: 5000, from: fromIso, to: toIso }),
     getJournalEntries({ limit: 5000, from: fromIso, to: toIso }),
     prev ? getJournalEntries({ limit: 5000, from: prev.from, to: prev.to }) : Promise.resolve([]),
     getUserPlaybooks(),
     getUserAccounts(),
+    getUserTrades({ limit: 2000, from: calFromIso, to: calToIso }),
   ])
 
   const closedCount = trades.filter((t) => t.status === "closed").length
@@ -84,6 +91,8 @@ export default async function AnalyticsPage({
           </>
         }
       />
+
+      <TradingCalendar trades={calendarTrades} />
 
       <AnalyticsView
         trades={trades}

@@ -8,8 +8,13 @@ import { getTeamMemberMap } from "@/lib/queries/teams"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
 import { LedgerView } from "@/components/ledger/ledger-view"
 
-export default async function LedgerPage() {
+export default async function LedgerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>
+}) {
   const m = SECTION_META.ledger
+  const { date: initialDate } = await searchParams
   const [trades, entries, playbooks, traderMap, accountOwnerMap] = await Promise.all([
     getUserTrades({ limit: 1000 }),
     getJournalEntries({ limit: 5000 }),
@@ -76,6 +81,7 @@ export default async function LedgerPage() {
         playbookMap={playbookMap}
         traderMap={traderMap}
         accountOwnerMap={accountOwnerMap}
+        initialDate={initialDate ?? null}
       />
     </>
   )
