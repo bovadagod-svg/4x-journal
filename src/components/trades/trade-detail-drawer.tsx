@@ -11,6 +11,7 @@ import {
   cancelPendingOrder,
   markPendingFilled,
   deleteTrade,
+  setTradePlaybook,
   type TradeDetail,
 } from "@/lib/actions/trades"
 import { brokerClosePosition, brokerModifyPosition } from "@/lib/actions/tradelocker"
@@ -671,6 +672,15 @@ function ActionsPanel({
         />
       )}
 
+      <Section title="Playbook">
+        <PlaybookAttribution
+          currentId={t.playbook_id}
+          options={detail.playbookOptions}
+          tradeId={t.id}
+          refresh={refresh}
+        />
+      </Section>
+
       <Section title="Journal">
         <button type="button" onClick={onOpenJournal} className="btn" style={{ width: "100%", justifyContent: "flex-start", padding: "10px 12px" }}>
           <Icon name="journal" size={13} />
@@ -686,6 +696,57 @@ function ActionsPanel({
       </Section>
 
       {err && <div style={{ fontSize: 12, color: "var(--c-red-bright)" }}>{err}</div>}
+    </div>
+  )
+}
+
+// ─── Playbook attribution (Actions tab) ──────────────────────────────────
+
+function PlaybookAttribution({
+  currentId, options, tradeId, refresh,
+}: {
+  currentId: string | null
+  options: NonNullable<TradeDetail>["playbookOptions"]
+  tradeId: string
+  refresh: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const onChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value || null
+    setBusy(true); setErr(null); setSaved(false)
+    const r = await setTradePlaybook(tradeId, next)
+    setBusy(false)
+    if (!r.ok) setErr(r.error ?? "Failed to update playbook.")
+    else { setSaved(true); refresh() }
+  }
+
+  if (options.length === 0) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>
+        No playbooks yet. Create one on the Playbooks page, then attribute it here.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <select
+        value={currentId ?? ""}
+        onChange={onChange}
+        disabled={busy}
+        style={{ ...inputStyle, opacity: busy ? 0.6 : 1 }}
+      >
+        <option value="">— No playbook —</option>
+        {options.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+      {busy && <span style={{ fontSize: 11.5, color: "var(--c-fg-muted)" }}>Saving…</span>}
+      {saved && !busy && <span style={{ fontSize: 11.5, color: "var(--c-green-bright)" }}>✓ Playbook updated</span>}
+      {err && <span style={{ fontSize: 11.5, color: "var(--c-red-bright)" }}>{err}</span>}
     </div>
   )
 }

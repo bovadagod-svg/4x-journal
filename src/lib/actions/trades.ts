@@ -7,11 +7,15 @@ import { evaluateTrade } from "@/lib/risk"
 import { loadPipValueContext, computePipValueAcct } from "@/lib/pip-value-context"
 import type { Database } from "@/lib/supabase/database.types"
 
+export type PlaybookOption = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "name" | "color" | "icon">
+
 export type TradeDetail = {
   trade: Database["public"]["Tables"]["trades"]["Row"]
   fills: Database["public"]["Tables"]["trade_fills"]["Row"][]
   account: Pick<Database["public"]["Tables"]["accounts"]["Row"], "id" | "label" | "broker" | "color" | "currency"> | null
-  playbook: Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "name" | "color" | "icon"> | null
+  playbook: PlaybookOption | null
+  /** All of the user's playbooks, for the attribution selector in the drawer. */
+  playbookOptions: PlaybookOption[]
 } | null
 
 export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
@@ -19,26 +23,55 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const [{ data: trade }, { data: fills }] = await Promise.all([
+  const [{ data: trade }, { data: fills }, { data: playbookOptions }] = await Promise.all([
     supabase.from("trades").select("*").eq("id", tradeId).maybeSingle(),
     supabase.from("trade_fills").select("*").eq("trade_id", tradeId).order("filled_at", { ascending: true }),
+    supabase.from("playbooks").select("id, name, color, icon").order("name"),
   ])
 
   if (!trade || trade.user_id !== user.id) return null
 
-  const [{ data: account }, { data: playbook }] = await Promise.all([
-    supabase.from("accounts").select("id, label, broker, color, currency").eq("id", trade.account_id).maybeSingle(),
-    trade.playbook_id
-      ? supabase.from("playbooks").select("id, name, color, icon").eq("id", trade.playbook_id).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ])
+  const playbook = trade.playbook_id
+    ? (playbookOptions ?? []).find((p) => p.id === trade.playbook_id) ?? null
+    : null
+
+  const { data: account } = await supabase
+    .from("accounts").select("id, label, broker, color, currency").eq("id", trade.account_id).maybeSingle()
 
   return {
     trade,
     fills: fills ?? [],
     account: account ?? null,
-    playbook: playbook ?? null,
+    playbook,
+    playbookOptions: playbookOptions ?? [],
   }
+}
+
+/**
+ * Attribute (or clear) a playbook on an existing trade. Pass null to detach.
+ * RLS scopes the update to the owner; we also re-check user_id defensively.
+ */
+export async function setTradePlaybook(
+  tradeId: string,
+  playbookId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in." }
+
+  const { error } = await supabase
+    .from("trades")
+    .update({ playbook_id: playbookId })
+    .eq("id", tradeId)
+    .eq("user_id", user.id)
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath("/ledger")
+  revalidatePath("/dashboard")
+  revalidatePath("/playbooks")
+  revalidatePath("/analytics")
+  return { ok: true }
 }
 
 const TradeSchema = z.object({
