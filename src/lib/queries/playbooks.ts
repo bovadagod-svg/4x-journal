@@ -5,6 +5,45 @@ import { getCurrentScope } from "./scope"
 
 export { PLAYBOOK_TEMPLATES } from "@/lib/playbook-templates"
 
+/**
+ * Playbooks every user always has. Created lazily (idempotent) the first time
+ * we read a user's playbook list, so they show up everywhere a playbook can be
+ * picked — the Log Trade modal and the trade detail drawer.
+ */
+export const SYSTEM_PLAYBOOKS = [
+  {
+    name: "Invalid Trades",
+    color: "#BE333D",
+    description: "These are invalid trades for any reason at all.",
+  },
+] as const
+
+/**
+ * Ensure the current user has every system playbook. Inserts only the missing
+ * ones (matched by name), so it's safe to call on every read. No-op when the
+ * user already has them all, or when there's no signed-in user.
+ */
+export async function ensureSystemPlaybooks(): Promise<void> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  const { data: existing } = await supabase
+    .from("playbooks").select("name").eq("user_id", user.id)
+  const names = new Set((existing ?? []).map((p) => p.name))
+  const missing = SYSTEM_PLAYBOOKS.filter((sp) => !names.has(sp.name))
+  if (missing.length === 0) return
+
+  await supabase.from("playbooks").insert(
+    missing.map((sp) => ({
+      user_id: user.id,
+      name: sp.name,
+      color: sp.color,
+      description: sp.description,
+    })),
+  )
+}
+
 export type Playbook = Database["public"]["Tables"]["playbooks"]["Row"]
 
 export type PlaybookStats = {

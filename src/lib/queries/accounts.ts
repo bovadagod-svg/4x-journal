@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { ensureSystemPlaybooks } from "./playbooks"
 
 export async function getUserAccounts() {
   const supabase = await createClient()
@@ -74,6 +75,7 @@ export async function getAccountSparks(accountIds: string[]): Promise<Map<string
 }
 
 export async function getUserPlaybooks() {
+  await ensureSystemPlaybooks()
   const supabase = await createClient()
   const { data } = await supabase
     .from("playbooks")

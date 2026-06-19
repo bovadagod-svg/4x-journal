@@ -5,6 +5,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { evaluateTrade } from "@/lib/risk"
 import { loadPipValueContext, computePipValueAcct } from "@/lib/pip-value-context"
+import { ensureSystemPlaybooks } from "@/lib/queries/playbooks"
 import type { Database } from "@/lib/supabase/database.types"
 
 export type PlaybookOption = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "name" | "color" | "icon">
@@ -22,6 +23,10 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
+
+  // Make sure the user's system playbooks (e.g. "Invalid Trades") exist so the
+  // attribution selector can always offer them.
+  await ensureSystemPlaybooks()
 
   const [{ data: trade }, { data: fills }, { data: playbookOptions }] = await Promise.all([
     supabase.from("trades").select("*").eq("id", tradeId).maybeSingle(),

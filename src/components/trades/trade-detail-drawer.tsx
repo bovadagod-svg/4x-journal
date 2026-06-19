@@ -193,7 +193,7 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
 
             {/* Body */}
             <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
-              {tab === "order" && <OrderPanel detail={detail} totalEntrySize={totalEntrySize} totalExitSize={totalExitSize} primaryEntry={primaryEntry} />}
+              {tab === "order" && <OrderPanel detail={detail} totalEntrySize={totalEntrySize} totalExitSize={totalExitSize} primaryEntry={primaryEntry} refresh={refresh} />}
               {tab === "fills" && (
                 <FillsPanel
                   detail={detail}
@@ -234,12 +234,13 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
 // ─── Order tab ───────────────────────────────────────────────────────────
 
 function OrderPanel({
-  detail, totalEntrySize, totalExitSize, primaryEntry,
+  detail, totalEntrySize, totalExitSize, primaryEntry, refresh,
 }: {
   detail: NonNullable<TradeDetail>
   totalEntrySize: number
   totalExitSize: number
   primaryEntry: NonNullable<TradeDetail>["fills"][number] | null
+  refresh: () => void
 }) {
   const t = detail.trade
   const placedAt = new Date(t.created_at).toLocaleString()
@@ -292,6 +293,16 @@ function OrderPanel({
 
   return (
     <>
+      {/* Playbook attribution — first so it's immediately actionable */}
+      <Section title="Playbook">
+        <PlaybookAttribution
+          currentId={t.playbook_id}
+          options={detail.playbookOptions}
+          tradeId={t.id}
+          refresh={refresh}
+        />
+      </Section>
+
       {/* Lifecycle */}
       <Section title="Lifecycle">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
@@ -672,15 +683,6 @@ function ActionsPanel({
         />
       )}
 
-      <Section title="Playbook">
-        <PlaybookAttribution
-          currentId={t.playbook_id}
-          options={detail.playbookOptions}
-          tradeId={t.id}
-          refresh={refresh}
-        />
-      </Section>
-
       <Section title="Journal">
         <button type="button" onClick={onOpenJournal} className="btn" style={{ width: "100%", justifyContent: "flex-start", padding: "10px 12px" }}>
           <Icon name="journal" size={13} />
@@ -723,6 +725,8 @@ function PlaybookAttribution({
     else { setSaved(true); refresh() }
   }
 
+  const selected = currentId ? options.find((p) => p.id === currentId) ?? null : null
+
   if (options.length === 0) {
     return (
       <div style={{ fontSize: 12, color: "var(--c-fg-muted)" }}>
@@ -733,17 +737,27 @@ function PlaybookAttribution({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <select
-        value={currentId ?? ""}
-        onChange={onChange}
-        disabled={busy}
-        style={{ ...inputStyle, opacity: busy ? 0.6 : 1 }}
-      >
-        <option value="">— No playbook —</option>
-        {options.map((p) => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </select>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 10, height: 10, borderRadius: 999, flexShrink: 0,
+            background: selected ? selected.color : "var(--c-fg-dim)",
+            opacity: selected ? 1 : 0.4,
+          }}
+        />
+        <select
+          value={currentId ?? ""}
+          onChange={onChange}
+          disabled={busy}
+          style={{ ...inputStyle, flex: 1, opacity: busy ? 0.6 : 1 }}
+        >
+          <option value="">— No playbook —</option>
+          {options.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
       {busy && <span style={{ fontSize: 11.5, color: "var(--c-fg-muted)" }}>Saving…</span>}
       {saved && !busy && <span style={{ fontSize: 11.5, color: "var(--c-green-bright)" }}>✓ Playbook updated</span>}
       {err && <span style={{ fontSize: 11.5, color: "var(--c-red-bright)" }}>{err}</span>}
