@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useTransition } from "react"
 import { Icon, PairFlag, type IconName } from "@/components/icons"
 import { removeWatchlistPair, updateWatchlistPair } from "@/lib/actions/watchlist"
+import { withAlpha } from "@/lib/color"
 import type { WatchlistPair } from "@/lib/queries/watchlist"
 
 type ViewMode = "table" | "cards"
@@ -286,7 +287,7 @@ function BiasChip({ bias }: { bias: string }) {
       padding: "2px 9px", borderRadius: 999,
       fontSize: 10.5, fontWeight: 600,
       color: m.color, background: m.bg,
-      border: `1px solid ${m.color}33`,
+      border: `1px solid ${withAlpha(m.color, 20)}`,
       textTransform: "capitalize",
     }}>
       <Icon name={m.icon} size={10} /> {m.label}

@@ -3,6 +3,7 @@
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { marginStatusColor, MARGIN_COLOR_VAR } from "@/lib/status"
+import { withAlpha } from "@/lib/color"
 import type { RiskRule, RiskUsage } from "@/lib/risk"
 import type { Account } from "@/components/accounts/accounts-context"
 import { RiskRulesForm } from "./risk-rules-form"
@@ -212,9 +213,9 @@ export function BehavioralSignalsPanel({ signals }: { signals: Array<{ key: stri
               display: "flex", alignItems: "flex-start", gap: 10,
               padding: 12, borderRadius: 8,
               background: "var(--c-bg-elev-2)",
-              border: `1px solid ${c}22`,
+              border: `1px solid ${withAlpha(c, 13)}`,
             }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--c-bg-elev-3)", border: `1px solid ${c}33`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--c-bg-elev-3)", border: `1px solid ${withAlpha(c, 20)}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <Icon name={s.icon as Parameters<typeof Icon>[0]["name"]} size={13} color={c} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>

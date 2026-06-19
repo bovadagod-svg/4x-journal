@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { computePnL } from "@/lib/finance"
 import { marginStatusColor, MARGIN_COLOR_VAR } from "@/lib/status"
+import { withAlpha } from "@/lib/color"
 import type { Account } from "@/components/accounts/accounts-context"
 
 type Scenario = {
@@ -93,7 +94,7 @@ function ProjectionPill({ scenario, variant }: { scenario: Scenario; variant: "s
       padding: "10px 12px",
       borderRadius: 8,
       background: "var(--c-bg-elev-2)",
-      border: `1px solid ${color}33`,
+      border: `1px solid ${withAlpha(color, 20)}`,
       display: "flex",
       flexDirection: "column",
       gap: 2,

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { simulate } from "@/lib/monte-carlo"
 import { formatUSD } from "@/lib/finance"
+import { withAlpha } from "@/lib/color"
 
 type Stats = {
   count: number
@@ -174,7 +175,7 @@ function EndpointCell({
     : highlight === "good" ? "var(--c-green-bright)"
     : highlight === "median" ? (delta >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)")
     : delta >= 0 ? "var(--c-fg)" : "var(--c-fg-muted)"
-  const border = highlight === "median" ? `1px solid ${color}55` : "1px solid var(--c-border)"
+  const border = highlight === "median" ? `1px solid ${withAlpha(color, 33)}` : "1px solid var(--c-border)"
   return (
     <div style={{
       background: "var(--c-bg-elev-2)",

@@ -22,6 +22,7 @@ import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
 import { pipsBetween } from "@/lib/pip"
 import { formatLotsOrSize } from "@/lib/lots"
+import { withAlpha } from "@/lib/color"
 
 type Tab = "order" | "fills" | "lifecycle" | "replay" | "actions"
 
@@ -1298,7 +1299,7 @@ function slClassBadge(c: NonNullable<EnrichedEvent["slClass"]>): React.ReactNode
   return (
     <span style={{
       fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
-      color: m.color, background: m.bg, padding: "1px 6px", borderRadius: 999, border: `1px solid ${m.color}33`,
+      color: m.color, background: m.bg, padding: "1px 6px", borderRadius: 999, border: `1px solid ${withAlpha(m.color, 20)}`,
     }}>{m.label}</span>
   )
 }
@@ -1313,7 +1314,7 @@ function tpClassBadge(c: NonNullable<EnrichedEvent["tpClass"]>): React.ReactNode
   return (
     <span style={{
       fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
-      color: m.color, background: m.bg, padding: "1px 6px", borderRadius: 999, border: `1px solid ${m.color}33`,
+      color: m.color, background: m.bg, padding: "1px 6px", borderRadius: 999, border: `1px solid ${withAlpha(m.color, 20)}`,
     }}>{m.label}</span>
   )
 }

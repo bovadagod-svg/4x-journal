@@ -1,5 +1,6 @@
 import { Icon } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
+import { withAlpha } from "@/lib/color"
 import {
   GOAL_METRICS,
   type GoalMetric,
@@ -129,7 +130,7 @@ function badge(color: string, bg: string): React.CSSProperties {
     display: "inline-flex", alignItems: "center", gap: 4,
     fontSize: 11, fontWeight: 600,
     color, background: bg,
-    border: `1px solid ${color}55`,
+    border: `1px solid ${withAlpha(color, 33)}`,
     padding: "2px 8px", borderRadius: 999,
   }
 }

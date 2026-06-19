@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
+import { withAlpha } from "@/lib/color"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -149,7 +150,7 @@ function buildSkewChip(long: Side, short: Side) {
       display: "inline-block", padding: "1px 6px", borderRadius: 4,
       fontSize: 10, fontWeight: 600, color,
       background: gap > 0 ? "rgba(17, 196, 88, 0.1)" : "rgba(190, 51, 61, 0.1)",
-      border: `1px solid ${color}33`,
+      border: `1px solid ${withAlpha(color, 20)}`,
     }}>
       {dominantSide} +{Math.abs(Math.round(gap))}pp
     </span>

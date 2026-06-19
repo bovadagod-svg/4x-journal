@@ -1,4 +1,5 @@
 import { formatUSD } from "@/lib/finance"
+import { withAlpha } from "@/lib/color"
 import { Icon } from "@/components/icons"
 import {
   GOAL_METRICS,
@@ -83,7 +84,7 @@ function ProgressBadge({ actual, target, meta }: { actual: number | null; target
     <span style={{
       fontSize: 11, color, padding: "4px 10px",
       background: bg,
-      border: `1px solid ${color}55`,
+      border: `1px solid ${withAlpha(color, 33)}`,
       borderRadius: 999, fontWeight: 600,
       display: "inline-flex", alignItems: "center", gap: 6,
     }}>
