@@ -110,6 +110,12 @@ export function TradeDetailDrawer({ tradeId, onClose }: { tradeId: string | null
                           {detail.playbook.name}
                         </>
                       )}
+                      {detail.createdByName && (
+                        <>
+                          {" · "}
+                          <span style={{ color: "var(--c-fg-dim)" }}>by {detail.createdByName}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

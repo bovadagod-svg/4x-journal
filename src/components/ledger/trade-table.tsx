@@ -26,12 +26,18 @@ export function TradeTable({
   entriesByTrade,
   playbookMap,
   totalCount,
+  traderMap = {},
 }: {
   trades: Trade[]
   entriesByTrade: Map<string, JournalEntry>
   playbookMap: Map<string, string>
   totalCount: number
+  /** user_id → display name. Drives the "Trader" column (team mode). */
+  traderMap?: Record<string, string>
 }) {
+  // Only show attribution when the workspace actually has more than one member.
+  const showTrader = Object.keys(traderMap).length > 1
+  const colCount = showTrader ? 13 : 12
   const enriched: ColumnEnriched[] = useMemo(
     () =>
       trades.map((t) => {
@@ -146,6 +152,7 @@ export function TradeTable({
               </Th>
               <SortableTh col="opened_at" sort={sort} onClick={() => toggleSort("opened_at")}>Date / Time</SortableTh>
               <SortableTh col="pair" sort={sort} onClick={() => toggleSort("pair")}>Pair</SortableTh>
+              {showTrader && <Th>Trader</Th>}
               <SortableTh col="side" sort={sort} onClick={() => toggleSort("side")}>Side</SortableTh>
               <SortableTh col="setup" sort={sort} onClick={() => toggleSort("setup")}>Setup</SortableTh>
               <SortableTh col="size" sort={sort} onClick={() => toggleSort("size")} align="right">Size</SortableTh>
@@ -160,7 +167,7 @@ export function TradeTable({
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={12} style={{ padding: 60, textAlign: "center", color: "var(--c-fg-muted)", fontSize: 13 }}>
+                <td colSpan={colCount} style={{ padding: 60, textAlign: "center", color: "var(--c-fg-muted)", fontSize: 13 }}>
                   No trades match your filters.
                 </td>
               </tr>
@@ -214,6 +221,22 @@ export function TradeTable({
                         <span style={{ fontWeight: 500 }}>{t.pair}</span>
                       </div>
                     </td>
+                    {showTrader && (
+                      <td style={{ padding: "11px 12px", color: "var(--c-fg-muted)", whiteSpace: "nowrap" }}>
+                        {traderMap[t.user_id] ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={traderMap[t.user_id]}>
+                            <span style={{
+                              width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                              background: "var(--c-bg-elev-3)", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 9, fontWeight: 600,
+                            }}>
+                              {traderMap[t.user_id].slice(0, 2).toUpperCase()}
+                            </span>
+                            <span style={{ fontSize: 11.5 }}>{traderMap[t.user_id]}</span>
+                          </span>
+                        ) : "—"}
+                      </td>
+                    )}
                     <td style={{ padding: "11px 12px" }}>
                       <span className={"chip " + (t.side === "long" ? "chip-green" : "chip-red")} style={{ fontSize: 10, padding: "1px 7px" }}>
                         <Icon name={t.side === "long" ? "arrowUp" : "arrowDown"} size={9} /> {t.side.toUpperCase()}
@@ -275,7 +298,7 @@ export function TradeTable({
                   </tr>
                   {isExp && (
                     <tr>
-                      <td colSpan={12} style={{ padding: 0 }}>
+                      <td colSpan={colCount} style={{ padding: 0 }}>
                         <LedgerExpand tradeId={t.id} entry={entriesByTrade.get(t.id)} />
                       </td>
                     </tr>

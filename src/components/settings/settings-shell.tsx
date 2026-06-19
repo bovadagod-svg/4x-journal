@@ -5,6 +5,7 @@ import { Icon, type IconName } from "@/components/icons"
 
 export type SettingsTabId =
   | "profile"
+  | "team"
   | "appearance"
   | "notifications"
   | "trading"
@@ -32,6 +33,7 @@ type Item =
 const NAV: Item[] = [
   { group: "Account" },
   { id: "profile", label: "Profile", icon: "user" },
+  { id: "team", label: "Team", icon: "accounts", hint: "Members, roles, shared workspace" },
   { id: "appearance", label: "Appearance", icon: "sparkle" },
   { id: "notifications", label: "Notifications", icon: "bell" },
   { group: "Trading" },

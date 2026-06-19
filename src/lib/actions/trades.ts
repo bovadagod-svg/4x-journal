@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { evaluateTrade } from "@/lib/risk"
 import { loadPipValueContext, computePipValueAcct } from "@/lib/pip-value-context"
 import { ensureSystemPlaybooks } from "@/lib/queries/playbooks"
+import { getTeamMemberMap } from "@/lib/queries/teams"
 import type { Database } from "@/lib/supabase/database.types"
 
 export type PlaybookOption = Pick<Database["public"]["Tables"]["playbooks"]["Row"], "id" | "name" | "color" | "icon">
@@ -17,6 +18,8 @@ export type TradeDetail = {
   playbook: PlaybookOption | null
   /** All of the user's playbooks, for the attribution selector in the drawer. */
   playbookOptions: PlaybookOption[]
+  /** Display name of the teammate who created this trade (team mode). */
+  createdByName: string | null
 } | null
 
 export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
@@ -40,8 +43,10 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
     ? (playbookOptions ?? []).find((p) => p.id === trade.playbook_id) ?? null
     : null
 
-  const { data: account } = await supabase
-    .from("accounts").select("id, label, broker, color, currency").eq("id", trade.account_id).maybeSingle()
+  const [{ data: account }, memberMap] = await Promise.all([
+    supabase.from("accounts").select("id, label, broker, color, currency").eq("id", trade.account_id).maybeSingle(),
+    getTeamMemberMap(),
+  ])
 
   return {
     trade,
@@ -49,6 +54,7 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
     account: account ?? null,
     playbook,
     playbookOptions: playbookOptions ?? [],
+    createdByName: memberMap[trade.user_id] ?? null,
   }
 }
 

@@ -1168,6 +1168,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_team_member_by_email: {
+        Args: { p_team_id: string; p_email: string; p_role?: string }
+        Returns: string
+      }
       auth_team_ids: { Args: never; Returns: string[] }
       consume_rate_limit: {
         Args: { p_key: string; p_window_seconds: number }
@@ -1175,6 +1179,16 @@ export type Database = {
       }
       create_team: { Args: { p_name: string }; Returns: string }
       current_team_id: { Args: never; Returns: string }
+      get_team_members: {
+        Args: { p_team_id: string }
+        Returns: {
+          user_id: string
+          email: string
+          display_name: string
+          role: string
+          joined_at: string
+        }[]
+      }
       get_entry_by_share_token: {
         Args: { p_token: string }
         Returns: {

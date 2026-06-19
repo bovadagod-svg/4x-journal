@@ -18,9 +18,11 @@ import { FxRatesPanel } from "@/components/settings/fx-rates-panel"
 import { GoalsPanel } from "@/components/settings/goals-panel"
 import { parseFxRates } from "@/lib/money"
 import { getUserGoals } from "@/lib/queries/goals"
+import { TeamPanel } from "@/components/settings/team-panel"
+import { getMyTeams, getActiveTeam, getTeamMembers, type TeamRole } from "@/lib/queries/teams"
 
 const VALID_TABS: SettingsTabId[] = [
-  "profile", "appearance", "notifications", "trading", "behavior",
+  "profile", "team", "appearance", "notifications", "trading", "behavior",
   "journal", "goals", "tax", "fx_rates", "integrations", "data",
 ]
 
@@ -39,7 +41,7 @@ export default async function SettingsPage({
     ? (params.tab as SettingsTabId)
     : "profile"
 
-  const [{ data: settings }, playbooks, goals] = await Promise.all([
+  const [{ data: settings }, playbooks, goals, myTeams, activeTeam] = await Promise.all([
     supabase
       .from("user_settings")
       .select("*")
@@ -47,7 +49,11 @@ export default async function SettingsPage({
       .maybeSingle(),
     getUserPlaybooks(),
     getUserGoals(),
+    getMyTeams(),
+    getActiveTeam(),
   ])
+  const teamMembers = activeTeam ? await getTeamMembers(activeTeam.id) : []
+  const currentRole: TeamRole = activeTeam?.role ?? "member"
 
   // Defaults if no row yet (lazy-initialized on first save).
   const s = settings ?? null
@@ -69,6 +75,15 @@ export default async function SettingsPage({
           timezone: s?.timezone ?? "America/New_York",
           display_currency: s?.display_currency ?? "USD",
         }}
+      />
+    ),
+    team: (
+      <TeamPanel
+        myTeams={myTeams}
+        activeTeam={activeTeam}
+        members={teamMembers}
+        currentUserId={user.id}
+        currentRole={currentRole}
       />
     ),
     appearance: <AppearanceSection />,
