@@ -111,7 +111,7 @@ export default async function DashboardPage({
           case "row-ticker":
             return v("ticker-tape") ? <TickerTape key={row.id} /> : null
           case "row-coach":
-            return v("coach-nudge") ? <CoachNudge key={row.id} stats={stats} /> : null
+            return v("coach-nudge") ? <CoachNudge key={row.id} stats={stats} from={fromIso} to={toIso} /> : null
           case "row-weekly-retro":
             return v("weekly-retro") ? <WeeklyRetrospectiveCard key={row.id} /> : null
           case "row-pnl":

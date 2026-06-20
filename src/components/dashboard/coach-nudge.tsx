@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { Icon } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
-import { generateCoachInsights, type CoachState } from "@/lib/actions/coach"
+import { generateCoachInsights, type CoachState, type CoachInsightsPayload, type CoachStat } from "@/lib/actions/coach"
 import { createTradeRule } from "@/lib/actions/trade-rules"
 import type { OverallStats } from "@/lib/queries/analytics"
 
@@ -31,24 +31,24 @@ function extractSide(text: string): "long" | "short" | null {
  *     based on the user's own stats — same UX you've always had.
  *   - "Refresh" button forces a regeneration ignoring the daily cache.
  */
-export function CoachNudge({ stats }: { stats: OverallStats | null }) {
+export function CoachNudge({ stats, from = null, to = null }: { stats: OverallStats | null; from?: string | null; to?: string | null }) {
   const [state, setState] = useState<CoachState | null>(null)
   const [pending, startTransition] = useTransition()
-  const [loaded, setLoaded] = useState(false)
 
-  // Lazy initial fetch — runs once when the widget appears
+  // Fetch (and re-fetch when the dashboard view/range changes) — the brief is
+  // scoped to whatever range the user is currently looking at.
   useEffect(() => {
-    if (loaded) return
-    setLoaded(true)
+    let cancelled = false
     startTransition(async () => {
-      const r = await generateCoachInsights(false)
-      setState(r)
+      const r = await generateCoachInsights({ from, to })
+      if (!cancelled) setState(r)
     })
-  }, [loaded])
+    return () => { cancelled = true }
+  }, [from, to])
 
   const onRefresh = () => {
     startTransition(async () => {
-      const r = await generateCoachInsights(true)
+      const r = await generateCoachInsights({ from, to, force: true })
       setState(r)
     })
   }
@@ -105,26 +105,10 @@ export function CoachNudge({ stats }: { stats: OverallStats | null }) {
 
           {pending && !state ? (
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>
-              Reading your last 30 days…
+              Analyzing this view…
             </p>
           ) : aiAvailable && state.ok ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
-                {state.payload.observations.map((s, i) => (
-                  <li key={i} style={{ marginBottom: i < state.payload.observations.length - 1 ? 4 : 0 }}>{s}</li>
-                ))}
-              </ul>
-              {state.payload.suggestions.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-                    Suggested actions
-                  </div>
-                  {state.payload.suggestions.map((s, i) => (
-                    <SuggestionPill key={i} suggestion={s} />
-                  ))}
-                </div>
-              )}
-            </div>
+            <BriefBody payload={state.payload} />
           ) : aiNotConfigured ? (
             <div style={{ fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
               <p style={{ margin: "0 0 6px" }}>
@@ -150,6 +134,83 @@ export function CoachNudge({ stats }: { stats: OverallStats | null }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Rich daily-brief body: headline → stat grid → positives / watch-outs /
+ * notable → suggested actions. Falls back to a flat list for the legacy
+ * (observations-only) shape used by the weekly retrospective. */
+function BriefBody({ payload }: { payload: CoachInsightsPayload }) {
+  const hasRich =
+    !!payload.headline ||
+    (payload.positives?.length ?? 0) > 0 ||
+    (payload.watchouts?.length ?? 0) > 0 ||
+    (payload.notable?.length ?? 0) > 0
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {payload.headline && (
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: "var(--c-fg)", lineHeight: 1.5 }}>
+          {payload.headline}
+        </p>
+      )}
+
+      {payload.stats && payload.stats.length > 0 && <StatGrid stats={payload.stats} />}
+
+      {hasRich ? (
+        <>
+          <BriefSection title="What's working" items={payload.positives} dot="var(--c-green-bright)" />
+          <BriefSection title="Watch out for" items={payload.watchouts} dot="var(--c-amber)" />
+          <BriefSection title="Also worth noting" items={payload.notable} dot="var(--c-fg-dim)" />
+        </>
+      ) : (
+        payload.observations.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
+            {payload.observations.map((s, i) => <li key={i} style={{ marginBottom: 4 }}>{s}</li>)}
+          </ul>
+        )
+      )}
+
+      {payload.suggestions.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+            Suggested actions
+          </div>
+          {payload.suggestions.map((s, i) => <SuggestionPill key={i} suggestion={s} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatGrid({ stats }: { stats: CoachStat[] }) {
+  const toneColor = (t?: string) => t === "good" ? "var(--c-green-bright)" : t === "bad" ? "var(--c-red-bright)" : "var(--c-fg)"
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 6 }}>
+      {stats.map((s) => (
+        <div key={s.label} style={{ background: "rgba(0,0,0,0.18)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "6px 8px" }}>
+          <div style={{ fontSize: 9, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+          <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: toneColor(s.tone), marginTop: 1 }}>{s.value}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BriefSection({ title, items, dot }: { title: string; items?: string[]; dot: string }) {
+  if (!items || items.length === 0) return null
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{title}</div>
+      <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map((s, i) => (
+          <li key={i} style={{ display: "flex", gap: 8, fontSize: 12.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>
+            <span style={{ flexShrink: 0, width: 5, height: 5, borderRadius: "50%", background: dot, marginTop: 6 }} />
+            <span>{s}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
