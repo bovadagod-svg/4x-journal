@@ -68,6 +68,9 @@ export function AnalyticsView({
         {filtered.length} closed trade{filtered.length === 1 ? "" : "s"} in this range
       </div>
 
+      {/* Plain-English review — read it at a glance, then dig into the cards */}
+      <PlainEnglishReview stats={stats} trades={filtered} />
+
       {/* KPIs */}
       <KPIGrid stats={stats} />
 
@@ -174,6 +177,105 @@ export function AnalyticsView({
 }
 
 // ── KPI grid ──────────────────────────────────────────────────────────────
+/**
+ * Plain-English summary of the current (range-filtered) analytics — a short
+ * paragraph the user can read at a glance before digging into the cards.
+ * Deterministic (no API), so it always renders.
+ */
+function PlainEnglishReview({ stats, trades }: { stats: AggStats; trades: Trade[] }) {
+  const review = useMemo(() => buildReview(stats, trades), [stats, trades])
+  if (!review) return null
+  return (
+    <div
+      className="card"
+      style={{
+        background: "linear-gradient(135deg, rgba(67, 18, 160, 0.14), rgba(105, 50, 212, 0.04))",
+        border: "1px solid rgba(105, 50, 212, 0.28)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <Icon name="sparkle" size={14} color="var(--c-purple-bright)" />
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 600 }}>In plain English</span>
+      </div>
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: "var(--c-fg-muted)" }}>{review}</p>
+    </div>
+  )
+}
+
+function buildReview(s: AggStats, trades: Trade[]): React.ReactNode {
+  if (s.count === 0) return null
+  const fg = (t: React.ReactNode) => <strong style={{ color: "var(--c-fg)" }}>{t}</strong>
+  const money = (n: number) => <strong style={{ color: n > 0 ? "var(--c-green-bright)" : n < 0 ? "var(--c-red-bright)" : "var(--c-fg)" }}>{formatUSD(n, { signed: true })}</strong>
+
+  // Pair + side breakdowns (by summed P&L).
+  const pairMap = new Map<string, number>()
+  for (const t of trades) pairMap.set(t.pair, (pairMap.get(t.pair) ?? 0) + (Number(t.pnl) || 0))
+  const pairs = [...pairMap.entries()].map(([pair, pnl]) => ({ pair, pnl })).sort((a, b) => b.pnl - a.pnl)
+  const bestPair = pairs[0]
+  const worstPair = pairs[pairs.length - 1]
+
+  const longs = trades.filter((t) => t.side === "long")
+  const shorts = trades.filter((t) => t.side === "short")
+  const sidePnl = (ts: Trade[]) => ts.reduce((acc, t) => acc + (Number(t.pnl) || 0), 0)
+  const sideWR = (ts: Trade[]) => ts.length ? Math.round((ts.filter((t) => Number(t.pnl) > 0).length / ts.length) * 100) : 0
+
+  const sorted = [...trades].sort((a, b) => (Number(b.pnl) || 0) - (Number(a.pnl) || 0))
+  const biggestLoss = Number(sorted[sorted.length - 1]?.pnl) || 0
+
+  const profitable = s.pnl > 0
+  const rr = s.avgLoss > 0 ? s.avgWin / s.avgLoss : null
+  const parts: React.ReactNode[] = []
+
+  // 1. Headline performance.
+  parts.push(
+    <span key="overall">
+      Over {fg(s.count)} closed trade{s.count === 1 ? "" : "s"} in this range you&apos;re {money(s.pnl)} — {profitable ? "in the green" : s.pnl < 0 ? "underwater" : "flat"} — winning {fg(`${Math.round(s.winRate)}%`)} of them.{" "}
+    </span>,
+  )
+
+  // 2. Edge quality (profit factor + expectancy).
+  if (s.pf >= 1.2) {
+    parts.push(<span key="edge">The edge is real: a profit factor of {fg(s.pf.toFixed(2))} and {money(s.expectancy)} expected per trade.{" "}</span>)
+  } else if (s.pf >= 1) {
+    parts.push(<span key="edge">You&apos;re marginally ahead — profit factor {fg(s.pf.toFixed(2))}, about {money(s.expectancy)} per trade — so consistency matters more than size right now.{" "}</span>)
+  } else {
+    parts.push(<span key="edge">The math is upside-down: profit factor {fg(s.pf.toFixed(2))} (under 1.0) and {money(s.expectancy)} per trade on average.{" "}</span>)
+  }
+
+  // 3. Reward-to-risk shape.
+  if (rr != null && s.avgWin > 0 && s.avgLoss > 0) {
+    parts.push(
+      <span key="rr">
+        Your average win ({money(s.avgWin)}) is {rr >= 1 ? "larger" : "smaller"} than your average loss ({money(-s.avgLoss)}), roughly {fg(`${rr.toFixed(1)}:1`)}{rr < 1 ? `, so you need a high hit-rate to stay positive` : ""}.{" "}
+      </span>,
+    )
+  }
+
+  // 4. Where the edge lives.
+  if (bestPair && bestPair.pnl > 0) {
+    parts.push(<span key="best">Your strongest instrument is {fg(bestPair.pair)} at {money(bestPair.pnl)}.{" "}</span>)
+  } else if (longs.length >= 3 && shorts.length >= 3) {
+    const longBetter = sidePnl(longs) >= sidePnl(shorts)
+    parts.push(<span key="side">Your {fg(longBetter ? "longs" : "shorts")} are doing the heavy lifting ({fg(`${longBetter ? sideWR(longs) : sideWR(shorts)}% WR`)}).{" "}</span>)
+  }
+
+  // 5. The leak to watch.
+  if (worstPair && worstPair.pnl < 0 && worstPair.pair !== bestPair?.pair) {
+    parts.push(<span key="worst">The biggest drag is {fg(worstPair.pair)} at {money(worstPair.pnl)} — worth a closer look below.{" "}</span>)
+  } else if (longs.length >= 3 && shorts.length >= 3) {
+    const weak = sideWR(longs) <= sideWR(shorts) ? "longs" : "shorts"
+    const weakWR = weak === "longs" ? sideWR(longs) : sideWR(shorts)
+    if (weakWR < 40) parts.push(<span key="weak">Keep an eye on your {fg(weak)} — only {fg(`${weakWR}%`)} are working out.{" "}</span>)
+  }
+
+  // 6. Tail-risk nudge when one loss dominates.
+  if (biggestLoss < 0 && s.avgLoss > 0 && Math.abs(biggestLoss) > s.avgLoss * 2.5) {
+    parts.push(<span key="tail">One outlier loss of {money(biggestLoss)} is skewing the picture — check your position sizing for consistency.</span>)
+  }
+
+  return <>{parts}</>
+}
+
 function KPIGrid({ stats }: { stats: AggStats }) {
   const sharpe =
     stats.count >= 5 && stats.rs.length > 0
