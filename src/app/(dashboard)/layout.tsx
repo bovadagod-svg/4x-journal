@@ -17,6 +17,7 @@ import { PnLDisplayProvider } from "@/lib/pnl-display-context"
 import type { PnLDisplayMode } from "@/lib/pnl-display"
 import { MoneyProvider } from "@/lib/money-context"
 import { parseFxRates } from "@/lib/money"
+import { TimeZoneProvider } from "@/lib/timezone-context"
 import { OnboardingModal } from "@/components/onboarding/onboarding-modal"
 import { RealtimeTrades } from "@/components/shell/realtime-trades"
 import { KeyboardShortcuts } from "@/components/shell/keyboard-shortcuts"
@@ -36,7 +37,7 @@ export default async function DashboardLayout({
   const [{ data: row }, accounts, playbooks, newsContext, riskRules] = await Promise.all([
     supabase
       .from("user_settings")
-      .select("theme, accent, density, empty_state, account_scope, sizing_method, default_risk_pct, default_fixed_lots, default_playbook_id, require_journal_note, require_journal_screenshot, require_journal_mood, confirm_above_pct, cap_by_prop_rule, pnl_display, display_currency, fx_rates, onboarded_at")
+      .select("theme, accent, density, empty_state, account_scope, sizing_method, default_risk_pct, default_fixed_lots, default_playbook_id, require_journal_note, require_journal_screenshot, require_journal_mood, confirm_above_pct, cap_by_prop_rule, pnl_display, display_currency, fx_rates, timezone, onboarded_at")
       .eq("user_id", user.id)
       .maybeSingle(),
     getUserAccounts(),
@@ -107,6 +108,9 @@ export default async function DashboardLayout({
   const pnlDisplay = (row?.pnl_display as PnLDisplayMode | undefined) ?? "money"
   const displayCurrency = row?.display_currency ?? "USD"
   const fxRates = parseFxRates(row?.fx_rates)
+  // Trades store UTC; we display in the user's chosen zone (default ET to match
+  // the settings default) so wall-clock times read the same on every device.
+  const displayTimeZone = row?.timezone ?? "America/New_York"
 
   // Show onboarding when the user hasn't completed it yet AND has no accounts.
   // We show even on subsequent page loads for new users until they finish or
@@ -116,6 +120,7 @@ export default async function DashboardLayout({
 
   return (
     <TweaksProvider initial={initial} userId={user.id}>
+     <TimeZoneProvider timeZone={displayTimeZone}>
      <MoneyProvider displayCurrency={displayCurrency} rates={fxRates}>
      <PnLDisplayProvider mode={pnlDisplay}>
       <AccountsProvider accounts={accounts}>
@@ -144,6 +149,7 @@ export default async function DashboardLayout({
       </AccountsProvider>
      </PnLDisplayProvider>
      </MoneyProvider>
+     </TimeZoneProvider>
     </TweaksProvider>
   )
 }

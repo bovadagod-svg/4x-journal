@@ -416,6 +416,67 @@ export async function syncTradeLockerConnection(connectionId: string): Promise<{
   return _syncTradeLockerCore(connectionId, supabase)
 }
 
+export type SyncAllResult = {
+  ok: boolean
+  error?: string
+  /** Number of enabled TradeLocker connections the sweep touched. */
+  connections: number
+  succeeded: number
+  failed: number
+  totalTradesUpserted: number
+}
+
+/**
+ * Sync every TradeLocker connection the signed-in user can see, in one sweep.
+ *
+ * This is the user-initiated equivalent of the cron route
+ * (api/cron/sync-tradelocker): same sequential, fail-isolated loop, but gated
+ * by the auth cookie and RLS-scoped — it only touches connections visible to
+ * the caller's session (i.e. the same accounts shown on the Accounts page).
+ *
+ * Each connection syncs sequentially with its own try/catch so one broken
+ * account doesn't abort the rest. We reuse the shared cookie client across the
+ * loop (one auth round-trip) and call _syncTradeLockerCore directly. Per-
+ * connection errors are still written to broker_connections.last_sync_error,
+ * so the Accounts page surfaces exactly which account failed and why.
+ */
+export async function syncAllTradeLockerConnections(): Promise<SyncAllResult> {
+  const empty = { connections: 0, succeeded: 0, failed: 0, totalTradesUpserted: 0 }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: "Not signed in.", ...empty }
+
+  const { data: conns, error } = await supabase
+    .from("broker_connections")
+    .select("id")
+    .eq("provider", "tradelocker")
+    .eq("enabled", true)
+  if (error) return { ok: false, error: error.message, ...empty }
+
+  const ids = (conns ?? []).map((c) => c.id)
+
+  let succeeded = 0
+  let failed = 0
+  let totalTradesUpserted = 0
+  for (const id of ids) {
+    try {
+      const r = await _syncTradeLockerCore(id, supabase)
+      if (r.ok) {
+        succeeded += 1
+        totalTradesUpserted += r.tradesUpserted ?? 0
+      } else {
+        failed += 1
+      }
+    } catch {
+      // _syncTradeLockerCore already marks the connection's last_sync_error on
+      // handled failures; an unexpected throw still shouldn't abort the sweep.
+      failed += 1
+    }
+  }
+
+  return { ok: true, connections: ids.length, succeeded, failed, totalTradesUpserted }
+}
+
 /**
  * Admin / cron sync — uses service-role client. RLS bypass means we trust the
  * caller (the cron route), so make sure that route gates on CRON_SECRET.

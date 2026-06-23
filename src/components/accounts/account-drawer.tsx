@@ -11,6 +11,7 @@ import { AccountFormModal } from "./account-form-modal"
 import { SyncTradeLockerButton } from "./sync-button"
 import type { AccountConnection } from "./account-card"
 import type { Account } from "./accounts-context"
+import { useDateFmt } from "@/lib/timezone-context"
 
 export function AccountDrawer({
   account,
@@ -30,11 +31,12 @@ export function AccountDrawer({
   currentUserId?: string
 }) {
   const router = useRouter()
+  const fmt = useDateFmt()
   const [tab, setTab] = useState<"overview" | "connection" | "danger">("overview")
   const [editing, setEditing] = useState(false)
 
   // Use updated_at as a rough "since" date if no created_at
-  const since = new Date(account.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  const since = fmt.date(account.created_at)
 
   // Trend metrics derived from sparkline (no real "starting balance" stored, so
   // use the start of the 7-day window as the baseline)
@@ -201,7 +203,7 @@ export function AccountDrawer({
                         {connection.last_sync_status === "ok" ? "Connection healthy" : connection.last_sync_status === "error" ? "Last sync failed" : "Awaiting first sync"}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--c-fg-muted)" }}>
-                        {connection.last_synced_at ? `Last sync ${new Date(connection.last_synced_at).toLocaleString()}` : "Never synced"} · {connection.trades_synced} trade{connection.trades_synced === 1 ? "" : "s"} imported
+                        {connection.last_synced_at ? `Last sync ${fmt.dateTime(connection.last_synced_at)}` : "Never synced"} · {connection.trades_synced} trade{connection.trades_synced === 1 ? "" : "s"} imported
                       </div>
                       {connection.last_sync_error && (
                         <div style={{ fontSize: 11, color: "var(--c-red-bright)", marginTop: 4 }}>{connection.last_sync_error}</div>

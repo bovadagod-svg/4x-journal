@@ -20,6 +20,7 @@ import { getReplayCandles, getTradeContext, type ReplayResult, type ContextResul
 type Aggregate = { ts: number; open: number; high: number; low: number; close: number; volume: number }
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
+import { useDateFmt } from "@/lib/timezone-context"
 import { pipsBetween } from "@/lib/pip"
 import { formatLotsOrSize } from "@/lib/lots"
 import { withAlpha } from "@/lib/color"
@@ -250,10 +251,11 @@ function OrderPanel({
   refresh: () => void
 }) {
   const t = detail.trade
-  const placedAt = new Date(t.created_at).toLocaleString()
-  const openedAt = t.opened_at ? new Date(t.opened_at).toLocaleString() : null
-  const closedAt = t.closed_at ? new Date(t.closed_at).toLocaleString() : null
-  const cancelledAt = t.cancelled_at ? new Date(t.cancelled_at).toLocaleString() : null
+  const fmt = useDateFmt()
+  const placedAt = fmt.dateTime(t.created_at)
+  const openedAt = t.opened_at ? fmt.dateTime(t.opened_at) : null
+  const closedAt = t.closed_at ? fmt.dateTime(t.closed_at) : null
+  const cancelledAt = t.cancelled_at ? fmt.dateTime(t.cancelled_at) : null
 
   // Slippage = signed pip distance between requested and filled price.
   // Positive = fill better than requested; negative = filled worse (cost).
@@ -459,6 +461,7 @@ function FillsTable({
   kind: "entry" | "exit"
   contractSize: number
 }) {
+  const fmt = useDateFmt()
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, overflowX: "auto" }}>
       <div style={{
@@ -490,7 +493,7 @@ function FillsTable({
           }}
         >
           <span className="mono" style={{ fontSize: 11, color: "var(--c-fg-muted)" }}>
-            {new Date(f.filled_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            {fmt.custom(f.filled_at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
           </span>
           <span className="mono tnum" style={{ textAlign: "right", fontWeight: 500 }}>
             {fmtPrice(Number(f.price), pair)}
@@ -1081,11 +1084,11 @@ function LifecycleRow({
   ctx: TradeContext
   last: boolean
 }) {
+  const fmt = useDateFmt()
   const status = (event.status ?? "").trim()
   const accent = statusAccent(status)
-  const dt = event.occurredAt ? new Date(event.occurredAt) : null
-  const dateStr = dt
-    ? dt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  const dateStr = event.occurredAt
+    ? fmt.custom(event.occurredAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     : "—"
 
   return (

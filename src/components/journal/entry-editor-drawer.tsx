@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Icon, PairFlag } from "@/components/icons"
+import { useDateFmt } from "@/lib/timezone-context"
 import {
   appendDuringTradeNote,
   deleteJournalEntry,
@@ -45,6 +46,7 @@ export function EntryEditorDrawer({
   requireJournalScreenshot?: boolean
   requireJournalMood?: boolean
 }) {
+  const fmt = useDateFmt()
   const [entry, setEntry] = useState<EntryRow | null>(null)
   const [tab, setTab] = useState<TabId>("pre")
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
@@ -254,7 +256,7 @@ export function EntryEditorDrawer({
             }}
           />
           <div style={{ fontSize: 11, color: "var(--c-fg-dim)" }}>
-            {entry.trade_id ? "Linked to trade · " : ""}{new Date(entry.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+            {entry.trade_id ? "Linked to trade · " : ""}{fmt.dateTime(entry.created_at)}
             {" · "}<SaveStatusPill status={saveStatus} />
           </div>
         </div>
@@ -375,7 +377,7 @@ export function EntryEditorDrawer({
                     display: "flex", gap: 10,
                   }}>
                     <span style={{ fontSize: 10.5, color: "var(--c-fg-dim)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                      {new Date(n.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {fmt.time(n.ts)}
                     </span>
                     <span style={{ flex: 1, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{n.text}</span>
                     <button onClick={() => onRemoveNote(n.id)} style={{ ...iconBtn, width: 24, height: 24 }} title="Remove">

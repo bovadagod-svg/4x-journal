@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import { Icon } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
+import { useDateFmt } from "@/lib/timezone-context"
+import { formatInZone } from "@/lib/datetime"
 import { getLiveQuotesForOpen, type LiveQuotesResult } from "@/lib/actions/tradelocker"
 
 /**
@@ -17,6 +19,7 @@ import { getLiveQuotesForOpen, type LiveQuotesResult } from "@/lib/actions/trade
 const POLL_MS = 30_000
 
 export function LivePnlStrip() {
+  const fmt = useDateFmt()
   const [data, setData] = useState<LiveQuotesResult | null>(null)
   const [pulse, setPulse] = useState(0)
 
@@ -64,7 +67,7 @@ export function LivePnlStrip() {
           <PulseDot pulse={pulse} />
           <h3 className="card-title" style={{ margin: 0 }}>Live floating P&amp;L</h3>
           <span className="card-subtitle" style={{ margin: 0 }}>
-            {rows.length} broker position{rows.length === 1 ? "" : "s"} · refreshed {formatRel(data.fetchedAt)}
+            {rows.length} broker position{rows.length === 1 ? "" : "s"} · refreshed {formatRel(data.fetchedAt, fmt.tz)}
           </span>
         </div>
         <div className="tnum" style={{
@@ -120,10 +123,10 @@ function PulseDot({ pulse }: { pulse: number }) {
   )
 }
 
-function formatRel(iso: string): string {
+function formatRel(iso: string, tz: string): string {
   const d = new Date(iso).getTime()
   const sec = Math.floor((Date.now() - d) / 1000)
   if (sec < 5) return "just now"
   if (sec < 60) return `${sec}s ago`
-  return new Date(iso).toLocaleTimeString()
+  return formatInZone(iso, tz, { hour: "numeric", minute: "2-digit", second: "2-digit" })
 }

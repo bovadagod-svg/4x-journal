@@ -1,6 +1,7 @@
 import { Icon } from "@/components/icons"
 import type { Trade } from "@/lib/queries/trades"
 import { formatUSD } from "@/lib/finance"
+import { LocalTime } from "@/lib/timezone-context"
 import Link from "next/link"
 
 export function RecentTrades({ trades }: { trades: Trade[] }) {
@@ -45,9 +46,7 @@ export function RecentTrades({ trades }: { trades: Trade[] }) {
                     {t.pnl != null ? formatUSD(pnl, { signed: true }) : "—"}
                   </td>
                   <td style={{ padding: "10px 18px", textAlign: "right", fontSize: 11, color: "var(--c-fg-dim)", whiteSpace: "nowrap" }}>
-                    {t.closed_at
-                      ? new Date(t.closed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                      : ""}
+                    {t.closed_at ? <LocalTime value={t.closed_at} preset="dateShort" /> : ""}
                   </td>
                 </tr>
               )

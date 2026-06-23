@@ -3,18 +3,20 @@
 import { useMemo, useState } from "react"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
+import { SESSION, inWindow } from "@/lib/sessions"
 
 /**
- * FX session analysis: split closed trades into the 4 major trading sessions
+ * FX session analysis: split closed trades into the major trading sessions
  * (UTC) and surface WR + edge per session. Helps the user see whether their
  * edge concentrates in London opens, NY pivots, the LDN/NY overlap, or even
  * Asian-session ranges.
  *
- * Sessions used here (UTC, standard retail conventions):
- *   - Sydney/Tokyo: 22:00 → 08:00 (wraps midnight)
- *   - London:       07:00 → 16:00
+ * Session windows are derived from the shared model in `@/lib/sessions` so this
+ * view, the dashboard clock, and the topbar pill all agree on the hours:
+ *   - Sydney/Tokyo: 22:00 → 09:00 (Asian block, wraps midnight)
+ *   - London:       08:00 → 17:00
  *   - New York:     13:00 → 22:00
- *   - LDN/NY overlap (high-volume window): 13:00 → 16:00
+ *   - LDN/NY overlap (high-volume window): 13:00 → 17:00
  *
  * A trade can belong to MULTIPLE sessions (e.g. a London-open scalp at 14:00
  * is in both London and the overlap). We show each session independently;
@@ -24,16 +26,16 @@ import type { Trade } from "@/lib/queries/trades"
 type SessionDef = { id: string; label: string; start: number; end: number; color: string }
 
 const SESSIONS: SessionDef[] = [
-  { id: "sydney", label: "Sydney / Tokyo", start: 22, end: 8,  color: "rgba(229, 162, 59, 0.55)" },
-  { id: "london", label: "London",         start: 7,  end: 16, color: "rgba(105, 50, 212, 0.55)" },
-  { id: "ny",     label: "New York",       start: 13, end: 22, color: "rgba(17, 196, 88, 0.55)" },
-  { id: "overlap",label: "LDN/NY overlap", start: 13, end: 16, color: "rgba(190, 51, 61, 0.55)" },
+  // Asian block = Sydney (22→07) ∪ Tokyo (00→09), which are contiguous → 22→09.
+  { id: "sydney", label: "Sydney / Tokyo", start: SESSION.sydney.open,  end: SESSION.tokyo.close,  color: "rgba(229, 162, 59, 0.55)" },
+  { id: "london", label: "London",         start: SESSION.london.open,  end: SESSION.london.close, color: "rgba(105, 50, 212, 0.55)" },
+  { id: "ny",     label: "New York",       start: SESSION.newyork.open, end: SESSION.newyork.close, color: "rgba(17, 196, 88, 0.55)" },
+  // LDN/NY overlap = London ∩ New York = 13→17.
+  { id: "overlap",label: "LDN/NY overlap", start: SESSION.newyork.open, end: SESSION.london.close, color: "rgba(190, 51, 61, 0.55)" },
 ]
 
 function inSession(hourUTC: number, s: SessionDef): boolean {
-  if (s.start <= s.end) return hourUTC >= s.start && hourUTC < s.end
-  // wraps midnight (Sydney/Tokyo)
-  return hourUTC >= s.start || hourUTC < s.end
+  return inWindow(hourUTC, s.start, s.end)
 }
 
 export function SessionAnalysis({ trades }: { trades: Trade[] }) {

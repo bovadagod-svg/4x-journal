@@ -8,6 +8,7 @@ import { deletePlaybook } from "@/lib/actions/playbooks"
 import { PlaybookFormModal } from "./playbook-form-modal"
 import type { Playbook, PlaybookStats } from "@/lib/queries/playbooks"
 import type { Trade } from "@/lib/queries/trades"
+import { useDateFmt } from "@/lib/timezone-context"
 
 type Tab = "rules" | "context" | "performance" | "history"
 
@@ -21,6 +22,7 @@ export function PlaybookDrawer({
   recentTrades: Trade[]
 }) {
   const router = useRouter()
+  const fmt = useDateFmt()
   const [tab, setTab] = useState<Tab>("rules")
   const [editing, setEditing] = useState(false)
 
@@ -211,8 +213,8 @@ export function PlaybookDrawer({
                           <div style={{ fontSize: 10.5, color: "var(--c-fg-muted)" }} className="mono">
                             {t.opened_at ? (
                               <>
-                                {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ·{" "}
-                                {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                {fmt.dateShort(t.opened_at)} ·{" "}
+                                {fmt.time(t.opened_at)}
                               </>
                             ) : "Pending"}
                           </div>

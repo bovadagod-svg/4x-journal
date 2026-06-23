@@ -8,6 +8,8 @@ import { formatLotsOrSize } from "@/lib/lots"
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { useTradeDetailDrawer } from "@/components/trades/trade-detail-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
+import { useDateFmt } from "@/lib/timezone-context"
+import { formatInZone, TIME_SHORT } from "@/lib/datetime"
 import { TradeRowActions } from "@/components/trades/trade-row-actions"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
 
@@ -38,6 +40,7 @@ export function TradeTable({
   /** accountId → owner user_id. Trades attribute to their account's owner. */
   accountOwnerMap?: Record<string, string>
 }) {
+  const fmt = useDateFmt()
   // Only show attribution when the workspace actually has more than one member.
   const showTrader = Object.keys(traderMap).length > 1
   const colCount = showTrader ? 13 : 12
@@ -206,17 +209,17 @@ export function TradeTable({
                       {t.opened_at ? (
                         <>
                           <div style={{ fontWeight: 500 }}>
-                            {new Date(t.opened_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            {fmt.date(t.opened_at)}
                           </div>
                           <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }} className="mono">
-                            {new Date(t.opened_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                            {fmt.time(t.opened_at)}
                           </div>
                         </>
                       ) : (
                         <>
                           <div style={{ fontWeight: 500, color: "var(--c-amber)" }}>Pending</div>
                           <div style={{ fontSize: 10.5, color: "var(--c-fg-dim)" }} className="mono">
-                            placed {new Date(t.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            placed {fmt.dateShort(t.created_at)}
                           </div>
                         </>
                       )}
@@ -437,6 +440,7 @@ function SortableTh({
 
 function LedgerExpand({ tradeId, entry }: { tradeId: string; entry?: JournalEntry }) {
   const { open, openForTrade } = useJournalDrawer()
+  const fmt = useDateFmt()
 
   if (!entry) {
     return (
@@ -459,7 +463,7 @@ function LedgerExpand({ tradeId, entry }: { tradeId: string; entry?: JournalEntr
 
   const phases: Array<{ key: string; label: string; body: string | null; icon: "target" | "play" | "check" | "sparkle" }> = [
     { key: "pre", label: "Pre-trade thesis", body: entry.pre_trade ?? null, icon: "target" },
-    { key: "live", label: "During trade", body: formatDuringNotes(entry.during_trade), icon: "play" },
+    { key: "live", label: "During trade", body: formatDuringNotes(entry.during_trade, fmt.tz), icon: "play" },
     { key: "post", label: "Post-trade review", body: entry.post_trade ?? null, icon: "check" },
     { key: "review", label: "Cold review (24–48h)", body: entry.cold_review ?? null, icon: "sparkle" },
   ]
@@ -475,7 +479,7 @@ function LedgerExpand({ tradeId, entry }: { tradeId: string; entry?: JournalEntr
             </span>
             <span style={{ fontSize: 11.5, color: "var(--c-fg-muted)" }}>{entry.title ?? "Untitled"}</span>
             <span style={{ fontSize: 11, color: "var(--c-fg-dim)", marginLeft: "auto" }} className="mono">
-              edited {new Date(entry.last_edited_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              edited {fmt.custom(entry.last_edited_at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
             </span>
           </div>
 
@@ -522,14 +526,14 @@ function LedgerExpand({ tradeId, entry }: { tradeId: string; entry?: JournalEntr
   )
 }
 
-function formatDuringNotes(jsonb: unknown): string | null {
+function formatDuringNotes(jsonb: unknown, tz: string): string | null {
   if (!Array.isArray(jsonb)) return null
   const lines = jsonb
     .map((n) => {
       if (!n || typeof n !== "object") return null
       const o = n as { ts?: string; text?: string }
       if (!o.text) return null
-      const t = o.ts ? new Date(o.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""
+      const t = o.ts ? formatInZone(o.ts, tz, TIME_SHORT) : ""
       return `${t ? t + " — " : ""}${o.text}`
     })
     .filter(Boolean)

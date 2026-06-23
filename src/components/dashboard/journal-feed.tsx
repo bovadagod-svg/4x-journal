@@ -3,6 +3,7 @@ import { Icon, PairFlag } from "@/components/icons"
 import type { JournalEntry, Trade } from "@/lib/queries/trades"
 import { formatUSD } from "@/lib/finance"
 import { OpenEntryRowWrapper } from "@/components/journal/open-entry-buttons"
+import { LocalTime } from "@/lib/timezone-context"
 
 /**
  * Recent journal entries with the prototype's icon-square row layout.
@@ -51,7 +52,6 @@ export function JournalFeed({ entries, trades }: { entries: JournalEntry[]; trad
               : "var(--c-fg-muted)"
             const pair = t?.pair ?? ""
             const note = e.pre_trade || e.post_trade || e.lessons || ""
-            const time = new Date(e.created_at).toLocaleString("en-US", { hour: "numeric", minute: "2-digit" })
 
             return (
               <OpenEntryRowWrapper key={e.id} entryId={e.id}>
@@ -81,7 +81,7 @@ export function JournalFeed({ entries, trades }: { entries: JournalEntry[]; trad
                     {pair && <PairFlag pair={pair} size={14} />}
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{pair || (e.title ?? "Entry")}</span>
                     {e.mood && <span className="chip chip-purple" style={{ fontSize: 10, padding: "1px 7px" }}>{e.mood}</span>}
-                    <span style={{ fontSize: 11, color: "var(--c-fg-dim)", marginLeft: "auto" }} className="mono">{time}</span>
+                    <span style={{ fontSize: 11, color: "var(--c-fg-dim)", marginLeft: "auto" }} className="mono"><LocalTime value={e.created_at} opts={{ hour: "numeric", minute: "2-digit" }} /></span>
                   </div>
                   <div style={{
                     fontSize: 11.5, color: "var(--c-fg-muted)",

@@ -4,13 +4,17 @@ import { usePathname } from "next/navigation"
 import { Icon } from "@/components/icons"
 import { useTweaks } from "@/lib/tweaks/tweaks-context"
 import { SECTION_META, type SectionId } from "@/lib/sections"
+import { marketStatusAt } from "@/lib/sessions"
+import { useNow } from "@/lib/use-now"
 import { AccountSwitcher } from "./account-switcher"
+import { SyncAllButton } from "@/components/accounts/sync-all-button"
 import { useLogTrade } from "@/components/trades/log-trade-context"
 
 export function TopBar() {
   const pathname = usePathname()
   const { tweaks, setTweak } = useTweaks()
   const logTrade = useLogTrade()
+  const now = useNow()
 
   const id = (pathname.split("/")[1] || "dashboard") as SectionId
   const meta = SECTION_META[id]
@@ -38,16 +42,7 @@ export function TopBar() {
           <Icon name="chevronRight" size={12} color="var(--c-fg-dim)" />
           <span style={{ color: "var(--c-fg)" }}>Overview</span>
         </div>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "4px 10px", borderRadius: 999,
-          background: "rgba(17, 196, 88, 0.08)",
-          color: "var(--c-green-bright)",
-          border: "1px solid rgba(17, 196, 88, 0.18)",
-        }}>
-          <span className="live-dot" />
-          <span style={{ fontSize: 11.5 }}>Markets open · London</span>
-        </div>
+        <MarketStatusPill now={now} />
       </div>
 
       <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
@@ -99,12 +94,44 @@ export function TopBar() {
             border: "1.5px solid var(--c-bg-elev-2)",
           }} />
         </button>
-        <button className="btn btn-primary" style={{ marginLeft: 4 }} onClick={logTrade.open}>
+        <SyncAllButton />
+        <button className="btn btn-primary" onClick={logTrade.open}>
           <Icon name="plus" size={14} />
           <span>Log Trade</span>
         </button>
       </div>
     </header>
+  )
+}
+
+/**
+ * Live market-status pill. Reads the shared session model so it's weekend-aware
+ * (FX is shut Fri 22:00 → Sun 22:00 UTC) and overlap-aware (shows every open
+ * session, e.g. "London / New York"). Renders a neutral placeholder until the
+ * clock has mounted to avoid a hydration mismatch.
+ */
+function MarketStatusPill({ now }: { now: Date | null }) {
+  const status = now ? marketStatusAt(now) : null
+  const open = status?.open ?? false
+  const text = !status
+    ? "Markets"
+    : status.open
+      ? `Markets open · ${status.sessionLabel}`
+      : `Markets closed${status.closedReason ? ` · ${status.closedReason}` : ""}`
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "4px 10px", borderRadius: 999,
+      background: open ? "rgba(17, 196, 88, 0.08)" : "var(--c-bg-elev-3)",
+      color: open ? "var(--c-green-bright)" : "var(--c-fg-muted)",
+      border: open ? "1px solid rgba(17, 196, 88, 0.18)" : "1px solid var(--c-border)",
+    }}>
+      {open
+        ? <span className="live-dot" />
+        : <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-fg-dim)" }} />}
+      <span style={{ fontSize: 11.5 }}>{text}</span>
+    </div>
   )
 }
 

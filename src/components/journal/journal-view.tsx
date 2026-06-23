@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import { useJournalDrawer } from "./journal-drawer-context"
+import { useDateFmt } from "@/lib/timezone-context"
 import type { JournalEntry, Trade } from "@/lib/queries/trades"
 
 type EntryKind = "trade" | "idea" | "session_plan" | "cold_review" | "session_recap"
@@ -353,9 +354,10 @@ function EntryCard({
   playbookMap: Map<string, string>
 }) {
   const { open } = useJournalDrawer()
+  const fmt = useDateFmt()
   const k = bucket(entry.kind as EntryKind)
   const meta = KIND_META[k]
-  const time = new Date(entry.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+  const time = fmt.custom(entry.created_at, { hour: "numeric", minute: "2-digit", hour12: true })
   const playbook = entry.playbook_id ? (playbookMap.get(entry.playbook_id) ?? null) : null
 
   const phaseCount = [
@@ -458,7 +460,7 @@ function EntryCard({
                 {(entry.during_trade as Array<{ ts?: string; text?: string }>).map((n, i) => (
                   <div key={i} style={{ display: "flex", gap: 10, fontSize: 12.5 }}>
                     <span className="mono" style={{ color: "var(--c-amber)", fontSize: 10.5, paddingTop: 2, fontWeight: 600, flexShrink: 0, width: 70 }}>
-                      {n.ts ? new Date(n.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""}
+                      {n.ts ? fmt.time(n.ts) : ""}
                     </span>
                     <span style={{ flex: 1, lineHeight: 1.5 }}>{n.text}</span>
                   </div>
@@ -551,7 +553,7 @@ function EntryCard({
             fontSize: 10.5, color: "var(--c-fg-dim)",
           }}>
             <span>
-              edited {new Date(entry.last_edited_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              edited {fmt.custom(entry.last_edited_at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
             </span>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => open(entry.id)} className="btn" style={{ fontSize: 11, padding: "5px 10px" }}>

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@/components/icons"
+import { useDateFmt } from "@/lib/timezone-context"
 import {
   disconnectTradeLockerConnection,
   reimportTradeLockerConnection,
@@ -17,6 +18,7 @@ export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, 
   tradesSynced: number
 }) {
   const router = useRouter()
+  const fmt = useDateFmt()
   const [pending, startTransition] = useTransition()
   const [result, setResult] = useState<{ kind: "ok"; n: number; debug?: unknown } | { kind: "err"; msg: string; debug?: unknown } | null>(null)
 
@@ -76,7 +78,7 @@ export function SyncTradeLockerButton({ connectionId, lastSyncedAt, lastStatus, 
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone }} />
         <span>
           {lastSyncedAt
-            ? `Last synced ${new Date(lastSyncedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`
+            ? `Last synced ${fmt.dateTime(lastSyncedAt)}`
             : "Not synced yet"}
           {tradesSynced > 0 && ` · ${tradesSynced} trades imported`}
         </span>
