@@ -24,6 +24,7 @@ import { useDateFmt } from "@/lib/timezone-context"
 import { pipsBetween } from "@/lib/pip"
 import { formatLotsOrSize } from "@/lib/lots"
 import { withAlpha } from "@/lib/color"
+import { classifyStopTargetMoves } from "@/lib/stop-modify"
 
 type Tab = "order" | "fills" | "lifecycle" | "replay" | "actions"
 
@@ -798,13 +799,17 @@ type EnrichedEvent = LifecycleEvent & {
   perFillMove?: number
   /** Slippage (filledPrice − price) when the order had a limit / stop trigger. */
   slippage?: number
-  /** Signed change in SL from the previous SL value on this trade. */
+  /** Signed change in SL from the previous SL level on this trade. */
   slDelta?: number
-  /** Movement label for SL Replaced events. */
+  /** Movement label for the SL adjustment carried by this event. */
   slClass?: "initial" | "be" | "trail" | "loose"
+  /** Running SL level as of this event (seeded from the opener, updated by protective Stop orders). */
+  slLevel?: number | null
   /** Signed change in TP. */
   tpDelta?: number
   tpClass?: "initial" | "wider" | "tighter"
+  /** Running TP level as of this event (updated by protective Limit orders). */
+  tpLevel?: number | null
   /** "T+2d 7h" relative to the trade open. */
   relTime?: string
   /** Ms since trade open, for sorting / display. */
@@ -909,18 +914,20 @@ type LifecycleSummaryData = {
 }
 
 function enrichEvents(events: LifecycleEvent[], ctx: TradeContext): EnrichedEvent[] {
-  // Walk chronologically (oldest → newest) so we can carry forward state.
-  const chrono = [...events].sort(
-    (a, b) => new Date(a.occurredAt ?? 0).getTime() - new Date(b.occurredAt ?? 0).getTime(),
-  )
   const openedAtMs = ctx.openedAt ? new Date(ctx.openedAt).getTime() : null
   const sideMul = ctx.side === "long" ? 1 : -1
 
-  let prevSL: number | null = null
-  let prevTP: number | null = null
+  // SL/TP modification classification is shared with the analytics card — it
+  // reconstructs the adjustment timeline from protective Stop/Limit exit-order
+  // prices (TradeLocker doesn't emit "Replaced" events). Returns per-event
+  // movement labels + running levels in chronological order.
+  const { annotated } = classifyStopTargetMoves(events, {
+    side: ctx.side === "long" ? "long" : "short",
+    entryPrice: ctx.entryPrice,
+  })
 
-  return chrono.map((e): EnrichedEvent => {
-    const enriched: EnrichedEvent = { ...e }
+  return annotated.map(({ event: e, slClass, slDelta, slLevel, tpClass, tpDelta, tpLevel }): EnrichedEvent => {
+    const enriched: EnrichedEvent = { ...e, slClass, slDelta, slLevel, tpClass, tpDelta, tpLevel }
 
     // Relative time from trade open
     if (e.occurredAt && openedAtMs != null) {
@@ -931,7 +938,6 @@ function enrichEvents(events: LifecycleEvent[], ctx: TradeContext): EnrichedEven
 
     const status = (e.status ?? "").toLowerCase()
     const isFilled = status.includes("fill")
-    const isReplaced = status.includes("replac") || status.includes("modif")
 
     // Per-fill realized P&L: only meaningful for exit Filled events with a
     // numeric size + filled price.
@@ -945,43 +951,6 @@ function enrichEvents(events: LifecycleEvent[], ctx: TradeContext): EnrichedEven
     // Skip when there's no requested price (pure market orders).
     if (isFilled && e.filledPrice != null && e.price != null && e.price !== e.filledPrice) {
       enriched.slippage = e.filledPrice - e.price
-    }
-
-    // SL / TP movement classification on Replaced events.
-    if (isReplaced) {
-      if (e.stopLoss != null && e.stopLoss !== prevSL) {
-        if (prevSL == null) {
-          enriched.slClass = "initial"
-        } else {
-          enriched.slDelta = e.stopLoss - prevSL
-          // BE: within 1 basis point of the entry price (handles both sides).
-          const beThreshold = Math.abs(ctx.entryPrice) * 0.0001
-          if (Math.abs(e.stopLoss - ctx.entryPrice) <= beThreshold) {
-            enriched.slClass = "be"
-          } else {
-            // For long: SL up = trail (favors). Short: SL down = trail.
-            const movedTowardProfit = ctx.side === "long" ? e.stopLoss > prevSL : e.stopLoss < prevSL
-            enriched.slClass = movedTowardProfit ? "trail" : "loose"
-          }
-        }
-        prevSL = e.stopLoss
-      }
-      if (e.takeProfit != null && e.takeProfit !== prevTP) {
-        if (prevTP == null) {
-          enriched.tpClass = "initial"
-        } else {
-          enriched.tpDelta = e.takeProfit - prevTP
-          // For long: TP up = wider (let it run). Short: TP down = wider.
-          const widened = ctx.side === "long" ? e.takeProfit > prevTP : e.takeProfit < prevTP
-          enriched.tpClass = widened ? "wider" : "tighter"
-        }
-        prevTP = e.takeProfit
-      }
-    } else if (e.stopLoss != null && prevSL == null) {
-      // First time we see a stop on any non-Replaced event (e.g. initial Placed).
-      prevSL = e.stopLoss
-    } else if (e.takeProfit != null && prevTP == null) {
-      prevTP = e.takeProfit
     }
 
     return enriched
@@ -1003,12 +972,13 @@ function summarize(enriched: EnrichedEvent[], ctx: TradeContext): LifecycleSumma
   const slMoves = enriched.filter((e) => e.slClass != null && e.slClass !== "initial")
   const tpMoves = enriched.filter((e) => e.tpClass != null && e.tpClass !== "initial")
 
-  // Final SL/TP from the latest Replaced (or initial Placed if no Replaced).
+  // Final SL/TP = the last reconstructed running level (seeded from the opener,
+  // then advanced by each protective-order adjustment). enriched is chronological.
   let finalSL: number | null = null
   let finalTP: number | null = null
   for (const e of enriched) {
-    if (e.stopLoss != null) finalSL = e.stopLoss
-    if (e.takeProfit != null) finalTP = e.takeProfit
+    if (e.slLevel != null) finalSL = e.slLevel
+    if (e.tpLevel != null) finalTP = e.tpLevel
   }
 
   return {
@@ -1136,7 +1106,6 @@ function LifecycleDetail({ event, ctx }: { event: EnrichedEvent; ctx: TradeConte
   const isFilled = status.includes("fill")
   const isPlaced = status.includes("placed")
   const isTriggered = status.includes("trigger")
-  const isReplaced = status.includes("replac") || status.includes("modif")
   const isCancelled = status.includes("cancel") || status.includes("reject")
 
   const lines: React.ReactNode[] = []
@@ -1156,6 +1125,14 @@ function LifecycleDetail({ event, ctx }: { event: EnrichedEvent; ctx: TradeConte
         </span>,
       )
     }
+    // Initial SL/TP set at entry — the baseline later adjustments move from.
+    if (event.stopLoss != null && event.takeProfit != null) {
+      lines.push(<span key="fo-bracket" style={secondary}>bracket SL {fmtPrice(event.stopLoss, ctx.pair)} · TP {fmtPrice(event.takeProfit, ctx.pair)}</span>)
+    } else if (event.stopLoss != null) {
+      lines.push(<span key="fo-sl" style={secondary}>SL {fmtPrice(event.stopLoss, ctx.pair)}</span>)
+    } else if (event.takeProfit != null) {
+      lines.push(<span key="fo-tp" style={secondary}>TP {fmtPrice(event.takeProfit, ctx.pair)}</span>)
+    }
   }
   // Filled CLOSE: scale-out / final close — show per-leg P&L
   else if (isFilled && event.isOpen === false && event.filledPrice != null) {
@@ -1169,44 +1146,6 @@ function LifecycleDetail({ event, ctx }: { event: EnrichedEvent; ctx: TradeConte
       lines.push(
         <span key="fill-pnl" style={{ ...secondary, color: tone, fontWeight: 600 }}>
           this leg: {formatUSD(event.perFillPnl, { signed: true })}
-        </span>,
-      )
-    }
-  }
-  // Replaced SL or TP: show old → new with classification
-  else if (isReplaced) {
-    if (event.slClass != null && event.stopLoss != null) {
-      lines.push(
-        <span key="sl-line" style={{ ...primary, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono">SL → {fmtPrice(event.stopLoss, ctx.pair)}</span>
-          {slClassBadge(event.slClass)}
-        </span>,
-      )
-      if (event.slDelta != null) {
-        lines.push(
-          <span key="sl-delta" style={secondary}>
-            {event.slDelta >= 0 ? "+" : ""}{event.slDelta.toFixed(5)} from prior
-          </span>,
-        )
-      }
-    } else if (event.tpClass != null && event.takeProfit != null) {
-      lines.push(
-        <span key="tp-line" style={{ ...primary, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono">TP → {fmtPrice(event.takeProfit, ctx.pair)}</span>
-          {tpClassBadge(event.tpClass)}
-        </span>,
-      )
-      if (event.tpDelta != null) {
-        lines.push(
-          <span key="tp-delta" style={secondary}>
-            {event.tpDelta >= 0 ? "+" : ""}{event.tpDelta.toFixed(5)} from prior
-          </span>,
-        )
-      }
-    } else if (event.price != null) {
-      lines.push(
-        <span key="price" className="mono" style={primary}>
-          @ {fmtPrice(event.price, ctx.pair)}
         </span>,
       )
     }
@@ -1247,18 +1186,15 @@ function LifecycleDetail({ event, ctx }: { event: EnrichedEvent; ctx: TradeConte
       lines.push(<span key="placed-tp" style={secondary}>TP {fmtPrice(event.takeProfit, ctx.pair)}</span>)
     }
   }
-  // Cancelled: usually OCO sibling
+  // Cancelled: a protective order superseded by an adjustment, or torn down when
+  // the position closed by other means. The SL/TP movement line below adds the
+  // level + trail/widen context when this cancellation reflects an adjustment.
   else if (isCancelled) {
-    if (event.type === "TakeProfit" || event.type === "StopLoss") {
-      lines.push(
-        <span key="cancel" style={primary}>
-          {event.type === "TakeProfit" ? "TP" : "SL"} cancelled
-        </span>,
-      )
-      lines.push(<span key="cancel-oco" style={secondary}>OCO sibling — opposite side hit</span>)
-    } else {
-      lines.push(<span key="cancel-other" style={primary}>Order cancelled</span>)
-    }
+    const t = (event.type ?? "").toLowerCase()
+    const label = t === "stop" || event.type === "StopLoss" ? "SL order cancelled"
+      : t === "limit" || event.type === "TakeProfit" ? "TP order cancelled"
+      : "Order cancelled"
+    lines.push(<span key="cancel" style={primary}>{label}</span>)
   }
   // Fallback
   else {
@@ -1267,6 +1203,41 @@ function LifecycleDetail({ event, ctx }: { event: EnrichedEvent; ctx: TradeConte
     }
     if (event.stopLoss != null) lines.push(<span key="any-sl" style={secondary}>SL {fmtPrice(event.stopLoss, ctx.pair)}</span>)
     if (event.takeProfit != null) lines.push(<span key="any-tp" style={secondary}>TP {fmtPrice(event.takeProfit, ctx.pair)}</span>)
+  }
+
+  // SL / TP adjustment label — runs regardless of status so it surfaces on the
+  // protective Stop/Limit exit-order rows (Filled when the level was hit,
+  // Cancelled when it was superseded/torn down), where TradeLocker actually
+  // encodes the modification. slLevel/tpLevel are the new (post-move) levels.
+  if (event.slClass != null && event.slClass !== "initial" && event.slLevel != null) {
+    lines.push(
+      <span key="sl-move" style={{ ...primary, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span className="mono">SL → {fmtPrice(event.slLevel, ctx.pair)}</span>
+        {slClassBadge(event.slClass)}
+      </span>,
+    )
+    if (event.slDelta != null) {
+      lines.push(
+        <span key="sl-move-delta" style={secondary}>
+          {event.slDelta >= 0 ? "+" : "−"}{fmtPrice(Math.abs(event.slDelta), ctx.pair)} from prior
+        </span>,
+      )
+    }
+  }
+  if (event.tpClass != null && event.tpClass !== "initial" && event.tpLevel != null) {
+    lines.push(
+      <span key="tp-move" style={{ ...primary, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span className="mono">TP → {fmtPrice(event.tpLevel, ctx.pair)}</span>
+        {tpClassBadge(event.tpClass)}
+      </span>,
+    )
+    if (event.tpDelta != null) {
+      lines.push(
+        <span key="tp-move-delta" style={secondary}>
+          {event.tpDelta >= 0 ? "+" : "−"}{fmtPrice(Math.abs(event.tpDelta), ctx.pair)} from prior
+        </span>,
+      )
+    }
   }
 
   return (

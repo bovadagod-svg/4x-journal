@@ -3,43 +3,24 @@
 import { useMemo } from "react"
 import { NarrativeBanner } from "./narrative-banner"
 import type { Trade } from "@/lib/queries/trades"
+import { classifyStopTargetMoves, type StopTargetEvent } from "@/lib/stop-modify"
 
 /**
- * Stop / take-profit modification behavior — looks across closed trades for
- * `lifecycle_events` and asks "how do you behave on losers vs. on winners?"
+ * Stop / take-profit modification behavior — looks across closed trades and
+ * asks "how do you behave on losers vs. on winners?"
  *
- * Classifies each SL move as BE / Trail / Loose and each TP move as Wider /
+ * Each SL move is classified BE / Trail / Loose and each TP move Wider /
  * Tighter, aggregated per outcome bucket: a 2× gap on "Loose stops" between
  * losers and winners is the canonical hope-trading signature.
  *
- * How modifications are recovered (TradeLocker specifics):
- * TradeLocker's order history does NOT emit "Replaced"/"Modified" rows carrying
- * the new stopLoss/takeProfit — those fields only ever sit on the opening
- * order. Instead, the SL/TP a trader sets are *protective exit orders* whose
- * trigger price IS the level: a Stop order (isOpen=false) carries the SL, a
- * Limit order (isOpen=false) carries the TP. When the trader adjusts an SL/TP
- * the old protective order is cancelled and a new one created, so the sequence
- * of protective-order prices — seeded by the opener's initial SL/TP — is the
- * actual modification timeline. Market exits are the close itself, not a
- * protective level, so they're ignored.
+ * The actual SL/TP-modification recovery lives in `@/lib/stop-modify`
+ * (classifyStopTargetMoves) — TradeLocker encodes adjustments as protective
+ * Stop/Limit exit-order prices, not "Replaced" events; see that file for why.
+ * This card just buckets the resulting counts by winner/loser outcome.
  *
  * Data source: trades.lifecycle_events JSONB, populated by the TradeLocker
  * importer. Manual / CSV trades have no lifecycle and are skipped.
  */
-
-export type LifecycleEvent = {
-  occurredAt?: string
-  status?: string
-  /** Normalized order type — "Stop" (SL order), "Limit" (TP order), "Market", … */
-  type?: string | null
-  /** true = opening/scale-in order; false = closing/protective order. */
-  isOpen?: boolean | null
-  /** Order trigger/limit price. For protective Stop/Limit orders this is the SL/TP level. */
-  price?: number | null
-  /** Only populated on the opening order — the trade's initial SL/TP. */
-  stopLoss?: number | null
-  takeProfit?: number | null
-}
 
 type Counts = {
   n: number
@@ -238,8 +219,8 @@ function compute(trades: Trade[]): {
     const bucket: Counts = pnl >= 0 ? winners : losers
     bucket.n++
 
-    const counts = classifyTrade(events as LifecycleEvent[], {
-      side: t.side as "long" | "short",
+    const { counts } = classifyStopTargetMoves(events as StopTargetEvent[], {
+      side: t.side === "long" ? "long" : "short",
       entryPrice: Number(t.entry_price),
     })
     bucket.slMoves += counts.slMoves
@@ -253,78 +234,4 @@ function compute(trades: Trade[]): {
   }
 
   return { tradesWithLifecycle, totalModifies, winners, losers }
-}
-
-/**
- * Classify SL/TP modifications on a single trade's lifecycle.
- *
- * Builds a chronological "level timeline" for the SL and for the TP, then walks
- * each one counting every change that clears a small noise floor. The timeline
- * is seeded by the opening order's initial SL/TP, then extended by the trigger
- * price of each protective exit order — Stop orders feed the SL timeline, Limit
- * orders feed the TP timeline (see the file header for why TradeLocker encodes
- * adjustments this way). Each step is classified BE / Trail / Loose (SL) or
- * Wider / Tighter (TP) relative to the previous level.
- */
-export function classifyTrade(events: LifecycleEvent[], ctx: { side: "long" | "short"; entryPrice: number }) {
-  const chrono = [...events].sort(
-    (a, b) => new Date(a.occurredAt ?? 0).getTime() - new Date(b.occurredAt ?? 0).getTime(),
-  )
-
-  // Initial SL/TP come from the opening order's protective settings.
-  let entrySL: number | null = null
-  let entryTP: number | null = null
-  for (const e of chrono) {
-    if (e.isOpen === true) {
-      if (e.stopLoss != null) entrySL = e.stopLoss
-      if (e.takeProfit != null) entryTP = e.takeProfit
-      break
-    }
-  }
-
-  // Extend each timeline with protective exit-order trigger prices, in time order.
-  const slTimeline: number[] = entrySL != null ? [entrySL] : []
-  const tpTimeline: number[] = entryTP != null ? [entryTP] : []
-  for (const e of chrono) {
-    if (e.isOpen === false && e.price != null) {
-      const type = (e.type ?? "").toLowerCase()
-      if (type === "stop") slTimeline.push(e.price)
-      else if (type === "limit") tpTimeline.push(e.price)
-    }
-  }
-
-  // A change only counts as a modification once it clears a small noise floor —
-  // protective limit orders often sit a fraction off the round TP, which is not
-  // a real adjustment. 5bp of entry price; BE detection stays tight at 1bp.
-  const scale = Math.abs(ctx.entryPrice)
-  const changeEps = scale > 0 ? scale * 0.0005 : 0
-  const beThreshold = scale * 0.0001
-
-  let slMoves = 0, slBe = 0, slTrail = 0, slLoose = 0
-  for (let i = 1; i < slTimeline.length; i++) {
-    const prev = slTimeline[i - 1]
-    const cur = slTimeline[i]
-    if (Math.abs(cur - prev) <= changeEps) continue
-    slMoves++
-    if (Math.abs(cur - ctx.entryPrice) <= beThreshold) {
-      slBe++
-    } else {
-      const movedTowardProfit = ctx.side === "long" ? cur > prev : cur < prev
-      if (movedTowardProfit) slTrail++
-      else slLoose++
-    }
-  }
-
-  let tpMoves = 0, tpWider = 0, tpTighter = 0
-  for (let i = 1; i < tpTimeline.length; i++) {
-    const prev = tpTimeline[i - 1]
-    const cur = tpTimeline[i]
-    if (Math.abs(cur - prev) <= changeEps) continue
-    tpMoves++
-    const widened = ctx.side === "long" ? cur > prev : cur < prev
-    if (widened) tpWider++
-    else tpTighter++
-  }
-
-  return { slMoves, slBe, slTrail, slLoose, tpMoves, tpWider, tpTighter }
 }
