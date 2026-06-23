@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { NarrativeBanner } from "./narrative-banner"
+import { isWin, isLoss } from "@/lib/outcome"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -95,9 +96,9 @@ function buildSeries(sorted: Trade[], window: number) {
   }
   for (let i = window - 1; i < sorted.length; i++) {
     const slice = sorted.slice(i - window + 1, i + 1)
-    const wins = slice.filter((t) => Number(t.pnl) > 0)
-    const losses = slice.filter((t) => Number(t.pnl) < 0)
-    const wr = (wins.length / slice.length) * 100
+    const wins = slice.filter((t) => isWin(Number(t.pnl)))
+    const losses = slice.filter((t) => isLoss(Number(t.pnl)))
+    const wr = (wins.length + losses.length) > 0 ? (wins.length / (wins.length + losses.length)) * 100 : 0
     const grossWin = wins.reduce((s, t) => s + Number(t.pnl), 0)
     const grossLoss = Math.abs(losses.reduce((s, t) => s + Number(t.pnl), 0))
     const avgWin = wins.length > 0 ? grossWin / wins.length : 0

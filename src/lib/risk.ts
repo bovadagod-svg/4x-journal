@@ -1,6 +1,7 @@
 import "server-only"
 import { createClient } from "@/lib/supabase/server"
 import type { RiskRule } from "@/lib/risk-types"
+import { isLoss } from "@/lib/outcome"
 
 export type { RiskRule } from "@/lib/risk-types"
 
@@ -168,8 +169,8 @@ export async function getBehavioralSignals(): Promise<BehavioralSignal[]> {
 
   const signals: BehavioralSignal[] = []
 
-  // 1. Revenge trade risk: count today's losses
-  const todayLosses = (todayClosed ?? []).filter((t) => Number(t.pnl) < 0).length
+  // 1. Revenge trade risk: count today's losses (breakeven scratches excluded)
+  const todayLosses = (todayClosed ?? []).filter((t) => isLoss(Number(t.pnl))).length
   signals.push({
     key: "revenge",
     title: "Revenge trade risk",

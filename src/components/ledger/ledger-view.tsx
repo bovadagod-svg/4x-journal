@@ -6,6 +6,7 @@ import { CalendarHeatmap } from "./calendar-heatmap"
 import { LedgerFiltersBar, EMPTY_FILTERS, type LedgerFilters } from "./ledger-filters"
 import { TradeTable } from "./trade-table"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 export function LedgerView({
   trades,
@@ -54,7 +55,7 @@ export function LedgerView({
         // Win/Loss/Breakeven only apply to closed trades.
         if (t.status !== "closed") return false
         const pnl = Number(t.pnl) || 0
-        const result = pnl > 0 ? "Win" : pnl < 0 ? "Loss" : "Breakeven"
+        const result = isWin(pnl) ? "Win" : isLoss(pnl) ? "Loss" : "Breakeven"
         if (result !== filters.result) return false
       }
       if (filters.date) {

@@ -56,8 +56,8 @@ describe("deterministicInsights", () => {
 
   it("surfaces a side bias when there's ≥15pp WR delta and ≥5 trades on each side", () => {
     const trades: DetTrade[] = [
-      ...Array.from({ length: 6 }, () => T({ side: "long",  pnl: 100, r: 1 })),
-      ...Array.from({ length: 6 }, () => T({ side: "short", pnl: -50, r: -0.5 })),
+      ...Array.from({ length: 6 }, () => T({ side: "long",  pnl: 250, r: 1 })),
+      ...Array.from({ length: 6 }, () => T({ side: "short", pnl: -250, r: -0.5 })),
     ]
     const r = deterministicInsights({ trades })
     const bias = r.observations.find((o) => /Long bias|Shorts are working/.test(o))
@@ -93,12 +93,12 @@ describe("deterministicInsights", () => {
   it("flags streak drift when last 10 are materially below all-time WR", () => {
     // First 20 are wins; last 10 are losses → drift = 33% - 67% = -33pp
     const earlyWins: DetTrade[] = Array.from({ length: 20 }, (_, i) => T({
-      pnl: 100, r: 1,
+      pnl: 250, r: 1,
       opened_at: `2026-02-${String(i + 1).padStart(2, "0")}T10:00:00Z`,
       closed_at: `2026-02-${String(i + 1).padStart(2, "0")}T11:00:00Z`,
     }))
     const recentLosses: DetTrade[] = Array.from({ length: 10 }, (_, i) => T({
-      pnl: -50, r: -0.5,
+      pnl: -250, r: -0.5,
       opened_at: `2026-03-${String(i + 1).padStart(2, "0")}T10:00:00Z`,
       closed_at: `2026-03-${String(i + 1).padStart(2, "0")}T11:00:00Z`,
     }))

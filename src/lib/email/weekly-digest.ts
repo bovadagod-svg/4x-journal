@@ -2,6 +2,7 @@ import "server-only"
 import { Resend } from "resend"
 import { createClient as createServiceRoleClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/database.types"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 
 type Supa = SupabaseClient<Database>
 
@@ -103,11 +104,11 @@ async function computeWeeklyStats(supabase: Supa, userId: string) {
     .gte("closed_at", sevenDaysAgo.toISOString())
 
   const closed = data ?? []
-  const wins = closed.filter((t) => Number(t.pnl) > 0)
-  const losses = closed.filter((t) => Number(t.pnl) < 0)
+  const wins = closed.filter((t) => isWin(Number(t.pnl)))
+  const losses = closed.filter((t) => isLoss(Number(t.pnl)))
   const totalPnL = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const totalR = closed.reduce((s, t) => s + (Number(t.r) || 0), 0)
-  const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : 0
+  const winRate = winRatePct(wins.length, losses.length) ?? 0
 
   // Top pair by absolute P&L
   const byPair = new Map<string, number>()

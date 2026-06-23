@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { formatUSD } from "@/lib/finance"
 import { slPips, tpPips, realizedPips, pipBucket, bucketSortKey, formatPips } from "@/lib/pip"
 import type { Trade } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 /**
  * Stop-Loss & Take-Profit analysis section for the Analytics page.
@@ -228,14 +229,15 @@ function computeStats(trades: Trade[]): Stats {
 function bucketRows(map: Map<string, { bucket: string; trades: Trade[]; pipsList: number[] }>): BucketRow[] {
   return Array.from(map.values())
     .map(({ bucket, trades }) => {
-      const wins = trades.filter((t) => Number(t.pnl) > 0).length
+      const wins = trades.filter((t) => isWin(Number(t.pnl))).length
+      const losses = trades.filter((t) => isLoss(Number(t.pnl))).length
       const totalPnl = trades.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
       const totalR = trades.reduce((s, t) => s + (Number(t.r) || 0), 0)
       return {
         bucket,
         count: trades.length,
         wins,
-        winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
+        winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
         avgPnL: trades.length > 0 ? totalPnl / trades.length : 0,
         avgR: trades.length > 0 ? totalR / trades.length : 0,
       }

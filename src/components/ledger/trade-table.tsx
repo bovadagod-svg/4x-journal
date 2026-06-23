@@ -8,6 +8,7 @@ import { formatLotsOrSize } from "@/lib/lots"
 import { useJournalDrawer } from "@/components/journal/journal-drawer-context"
 import { useTradeDetailDrawer } from "@/components/trades/trade-detail-drawer-context"
 import { usePnLDisplay } from "@/lib/pnl-display-context"
+import { isWin, isLoss } from "@/lib/outcome"
 import { useDateFmt } from "@/lib/timezone-context"
 import { formatInZone, TIME_SHORT } from "@/lib/datetime"
 import { TradeRowActions } from "@/components/trades/trade-row-actions"
@@ -54,8 +55,8 @@ export function TradeTable({
         const pnl = Number(t.pnl)
         const result: Result =
           t.status === "open" ? "open"
-          : pnl > 0 ? "win"
-          : pnl < 0 ? "loss"
+          : isWin(pnl) ? "win"
+          : isLoss(pnl) ? "loss"
           : "breakeven"
         return {
           ...t,

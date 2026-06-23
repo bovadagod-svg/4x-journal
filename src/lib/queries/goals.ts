@@ -2,6 +2,7 @@ import "server-only"
 import { createClient } from "@/lib/supabase/server"
 import { getCurrentScope } from "./scope"
 import type { GoalRow, PeriodActuals, PeriodWindow } from "@/lib/goals/metadata"
+import { isWin, isLoss } from "@/lib/outcome"
 
 // Re-export so existing call sites that import from "@/lib/queries/goals" keep working.
 // Client code should import directly from "@/lib/goals/metadata".
@@ -37,8 +38,8 @@ export async function getPeriodActuals(window: PeriodWindow): Promise<PeriodActu
   const { data: trades } = await q
   const closed = trades ?? []
 
-  const wins = closed.filter((t) => Number(t.pnl) > 0)
-  const losses = closed.filter((t) => Number(t.pnl) < 0)
+  const wins = closed.filter((t) => isWin(Number(t.pnl)))
+  const losses = closed.filter((t) => isLoss(Number(t.pnl)))
   const pnl = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const totalR = closed.reduce((s, t) => s + (Number(t.r) || 0), 0)
   const grossWins = wins.reduce((s, t) => s + Number(t.pnl), 0)

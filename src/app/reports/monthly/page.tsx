@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getUserTrades } from "@/lib/queries/trades"
 import { getUserAccounts } from "@/lib/queries/accounts"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 import { EquityCurve } from "@/components/analytics/equity-curve"
 import { Icon } from "@/components/icons"
 
@@ -41,10 +42,10 @@ export default async function MonthlyReport({
     return at >= start && at < end
   })
   const closed = trades.filter((t) => t.status === "closed")
-  const wins = closed.filter((t) => Number(t.pnl) > 0)
-  const losses = closed.filter((t) => Number(t.pnl) < 0)
+  const wins = closed.filter((t) => isWin(Number(t.pnl)))
+  const losses = closed.filter((t) => isLoss(Number(t.pnl)))
   const totalPnL = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
-  const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : null
+  const winRate = winRatePct(wins.length, losses.length)
   const sumWins = wins.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const sumLosses = Math.abs(losses.reduce((s, t) => s + (Number(t.pnl) || 0), 0))
   const profitFactor = sumLosses > 0 ? Number((sumWins / sumLosses).toFixed(2)) : null

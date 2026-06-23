@@ -4,6 +4,7 @@ import { Icon, type IconName } from "@/components/icons"
 import { getUserAccounts } from "@/lib/queries/accounts"
 import { createClient } from "@/lib/supabase/server"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 
 function todayIso() { return new Date().toISOString().slice(0, 10) }
 function startOfMonthIso() { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) }
@@ -238,13 +239,14 @@ async function getYtdStats() {
     .gte("opened_at", yearStart.toISOString())
   const all = data ?? []
   const closed = all.filter((t) => t.status === "closed")
-  const wins = closed.filter((t) => Number(t.pnl) > 0)
-  const losses = closed.filter((t) => Number(t.pnl) < 0)
+  const wins = closed.filter((t) => isWin(Number(t.pnl)))
+  const losses = closed.filter((t) => isLoss(Number(t.pnl)))
   const breakeven = closed.length - wins.length - losses.length
   const totalWinPnL = wins.reduce((s, t) => s + Number(t.pnl), 0)
   const totalLossPnL = losses.reduce((s, t) => s + Number(t.pnl), 0)
-  const netPnL = totalWinPnL + totalLossPnL
-  const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : 0
+  // Net includes breakeven trades' P&L (which can be up to ±$100), so sum all closed.
+  const netPnL = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
+  const winRate = winRatePct(wins.length, losses.length) ?? 0
   return {
     trades: all.length,
     closedTrades: closed.length,

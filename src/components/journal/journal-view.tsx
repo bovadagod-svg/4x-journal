@@ -7,6 +7,7 @@ import { formatUSD } from "@/lib/finance"
 import { useJournalDrawer } from "./journal-drawer-context"
 import { useDateFmt } from "@/lib/timezone-context"
 import type { JournalEntry, Trade } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 type EntryKind = "trade" | "idea" | "session_plan" | "cold_review" | "session_recap"
 
@@ -291,8 +292,8 @@ function DayHeader({ iso, entries, tradeMap }: { iso: string; entries: JournalEn
   const fullLabel = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
   const tradeEntries = entries.filter((e) => bucket(e.kind as EntryKind) === "trade")
   const tradesForDay = tradeEntries.map((e) => (e.trade_id ? tradeMap.get(e.trade_id) : null)).filter(Boolean) as Trade[]
-  const wins = tradesForDay.filter((t) => t.status === "closed" && Number(t.pnl) > 0).length
-  const losses = tradesForDay.filter((t) => t.status === "closed" && Number(t.pnl) < 0).length
+  const wins = tradesForDay.filter((t) => t.status === "closed" && isWin(Number(t.pnl))).length
+  const losses = tradesForDay.filter((t) => t.status === "closed" && isLoss(Number(t.pnl))).length
   const pnl = tradesForDay.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const ideas = entries.filter((e) => bucket(e.kind as EntryKind) === "idea").length
 

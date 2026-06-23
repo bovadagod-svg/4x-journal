@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 /**
  * Hold-time analysis: how long does each trade live, and which durations
@@ -127,14 +128,15 @@ function compute(trades: Trade[]) {
 
   const rows = BUCKETS.map((b) => {
     const inBucket = eligible.filter((t, i) => minutes[i] >= b.minMin && minutes[i] < b.maxMin)
-    const wins = inBucket.filter((t) => Number(t.pnl) > 0).length
+    const wins = inBucket.filter((t) => isWin(Number(t.pnl))).length
+    const losses = inBucket.filter((t) => isLoss(Number(t.pnl))).length
     const totalPnl = inBucket.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
     const totalR = inBucket.reduce((s, t) => s + (Number(t.r) || 0), 0)
     return {
       label: b.label,
       count: inBucket.length,
       wins,
-      winRate: inBucket.length > 0 ? (wins / inBucket.length) * 100 : 0,
+      winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
       avgPnL: inBucket.length > 0 ? totalPnl / inBucket.length : 0,
       avgR: inBucket.length > 0 ? totalR / inBucket.length : 0,
     }
@@ -146,7 +148,7 @@ function compute(trades: Trade[]) {
   const p75 = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.75)] : 0
 
   const winnerMinutes = eligible
-    .filter((t) => Number(t.pnl) > 0)
+    .filter((t) => isWin(Number(t.pnl)))
     .map((t) => (new Date(t.closed_at!).getTime() - new Date(t.opened_at!).getTime()) / 60_000)
   const fastestWin = winnerMinutes.length > 0 ? Math.min(...winnerMinutes) : 0
 

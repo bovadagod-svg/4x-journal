@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getCurrentScope } from "./scope"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 
 export type OverallStats = {
   totalTrades: number
@@ -74,11 +75,11 @@ export async function getPairPerformance(opts: RangeOpts = {}): Promise<PairPerf
   if (opts.to) q = q.lte("closed_at", opts.to)
   const { data } = await q
 
-  const byPair = new Map<string, { trades: number; closedTrades: number; wins: number; pnl: number; rSum: number }>()
+  const byPair = new Map<string, { trades: number; closedTrades: number; wins: number; losses: number; pnl: number; rSum: number }>()
   ;(data ?? []).forEach((t) => {
     const key = t.pair
     let s = byPair.get(key)
-    if (!s) { s = { trades: 0, closedTrades: 0, wins: 0, pnl: 0, rSum: 0 }; byPair.set(key, s) }
+    if (!s) { s = { trades: 0, closedTrades: 0, wins: 0, losses: 0, pnl: 0, rSum: 0 }; byPair.set(key, s) }
     s.trades += 1
     if (t.status === "closed") {
       s.closedTrades += 1
@@ -86,7 +87,8 @@ export async function getPairPerformance(opts: RangeOpts = {}): Promise<PairPerf
       const r = Number(t.r) || 0
       s.pnl += pnl
       s.rSum += r
-      if (pnl > 0) s.wins += 1
+      if (isWin(pnl)) s.wins += 1
+      else if (isLoss(pnl)) s.losses += 1
     }
   })
 
@@ -95,7 +97,7 @@ export async function getPairPerformance(opts: RangeOpts = {}): Promise<PairPerf
       pair,
       trades: s.trades,
       closedTrades: s.closedTrades,
-      winRate: s.closedTrades > 0 ? Math.round((s.wins / s.closedTrades) * 100) : null,
+      winRate: winRatePct(s.wins, s.losses),
       pnl: Number(s.pnl.toFixed(2)),
       avgR: s.closedTrades > 0 ? Number((s.rSum / s.closedTrades).toFixed(2)) : null,
     }))
@@ -119,8 +121,8 @@ export async function getOverallStats(opts: RangeOpts = {}): Promise<OverallStat
     closed_at: t.closed_at,
   }))
 
-  const wins = closed.filter((t) => t.pnl > 0)
-  const losses = closed.filter((t) => t.pnl < 0)
+  const wins = closed.filter((t) => isWin(t.pnl))
+  const losses = closed.filter((t) => isLoss(t.pnl))
   const breakeven = closed.length - wins.length - losses.length
 
   const sumWins = wins.reduce((s, t) => s + t.pnl, 0)
@@ -137,7 +139,8 @@ export async function getOverallStats(opts: RangeOpts = {}): Promise<OverallStat
     ? Number((losses.reduce((s, t) => s + t.r, 0) / losses.length).toFixed(3))
     : null
 
-  const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : null
+  // Win rate excludes breakevens: wins / (wins + losses).
+  const winRate = winRatePct(wins.length, losses.length)
 
   const profitFactor = sumLosses > 0
     ? Number((sumWins / sumLosses).toFixed(2))

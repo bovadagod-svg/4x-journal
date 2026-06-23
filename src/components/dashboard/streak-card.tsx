@@ -1,6 +1,7 @@
 import { Icon } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 /**
  * Streak card. Computes:
@@ -23,7 +24,7 @@ export function StreakCard({ trades, periodLabel = "30 days" }: { trades: Trade[
   let currentValue = 0
   for (const t of closed) {
     const pnl = Number(t.pnl) || 0
-    const dir = pnl > 0 ? "win" : pnl < 0 ? "loss" : null
+    const dir = isWin(pnl) ? "win" : isLoss(pnl) ? "loss" : null
     if (dir === null) break
     if (currentDirection === null) currentDirection = dir
     else if (currentDirection !== dir) break
@@ -37,8 +38,8 @@ export function StreakCard({ trades, periodLabel = "30 days" }: { trades: Trade[
   let runWin = 0, runLoss = 0
   for (const t of chrono) {
     const pnl = Number(t.pnl) || 0
-    if (pnl > 0) { runWin++; runLoss = 0; if (runWin > longestWin) longestWin = runWin }
-    else if (pnl < 0) { runLoss++; runWin = 0; if (runLoss > longestLoss) longestLoss = runLoss }
+    if (isWin(pnl)) { runWin++; runLoss = 0; if (runWin > longestWin) longestWin = runWin }
+    else if (isLoss(pnl)) { runLoss++; runWin = 0; if (runLoss > longestLoss) longestLoss = runLoss }
     else { runWin = 0; runLoss = 0 }
   }
 

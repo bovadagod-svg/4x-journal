@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Database } from "@/lib/supabase/database.types"
 import { getCurrentScope } from "./scope"
+import { isWin, isLoss } from "@/lib/outcome"
 
 export type Trade = Database["public"]["Tables"]["trades"]["Row"]
 export type JournalEntry = Database["public"]["Tables"]["journal_entries"]["Row"]
@@ -134,8 +135,8 @@ export async function getTodayPnL(opts: { accountId?: string | null } = {}) {
   return {
     value: closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0),
     trades: closed.length,
-    wins: closed.filter((t) => Number(t.pnl) > 0).length,
-    losses: closed.filter((t) => Number(t.pnl) < 0).length,
+    wins: closed.filter((t) => isWin(Number(t.pnl))).length,
+    losses: closed.filter((t) => isLoss(Number(t.pnl))).length,
   }
 }
 

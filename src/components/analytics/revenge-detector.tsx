@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { NarrativeBanner } from "./narrative-banner"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 /**
  * Revenge-trade detector. Trades opened within N minutes of a previous loss
@@ -150,8 +151,9 @@ function compute(trades: Trade[], windowMin: number): { baseline: Bucket; reveng
       const prev = sorted[j]
       if (prev.account_id !== t.account_id) continue
       const prevPnl = Number(prev.pnl) || 0
-      if (prevPnl >= 0) {
-        // A win/breakeven in the gap clears the "revenge" state.
+      if (!isLoss(prevPnl)) {
+        // A win or breakeven (scratch) in the gap clears the "revenge" state —
+        // only a decisive loss can trigger a revenge entry.
         break
       }
       const gapMin = (new Date(t.opened_at!).getTime() - new Date(prev.closed_at!).getTime()) / 60000
@@ -168,10 +170,11 @@ function compute(trades: Trade[], windowMin: number): { baseline: Bucket; reveng
 
 function bucketize(ts: Trade[]): Bucket {
   if (ts.length === 0) return { n: 0, winRate: 0, avgPnL: 0 }
-  const wins = ts.filter((t) => Number(t.pnl) > 0).length
+  const wins = ts.filter((t) => isWin(Number(t.pnl))).length
+  const losses = ts.filter((t) => isLoss(Number(t.pnl))).length
   return {
     n: ts.length,
-    winRate: (wins / ts.length) * 100,
+    winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
     avgPnL: ts.reduce((s, t) => s + (Number(t.pnl) || 0), 0) / ts.length,
   }
 }

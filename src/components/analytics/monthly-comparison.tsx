@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
+import { isWin, isLoss } from "@/lib/outcome"
 
 /**
  * Monthly comparison bars. Shows the last 12 calendar months as P&L bars
@@ -141,13 +142,14 @@ function compute(trades: Trade[]) {
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
     const label = d.toLocaleDateString("en-US", { month: "short" })
     const ts = byMonth.get(key) ?? []
-    const wins = ts.filter((t) => Number(t.pnl) > 0).length
+    const wins = ts.filter((t) => isWin(Number(t.pnl))).length
+    const losses = ts.filter((t) => isLoss(Number(t.pnl))).length
     months.push({
       label,
       key,
       count: ts.length,
       pnl: ts.reduce((s, t) => s + (Number(t.pnl) || 0), 0),
-      winRate: ts.length > 0 ? (wins / ts.length) * 100 : 0,
+      winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
     })
   }
 

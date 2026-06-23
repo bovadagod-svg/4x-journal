@@ -2,6 +2,7 @@ import "server-only"
 import { createClient } from "@/lib/supabase/server"
 import type { Database } from "@/lib/supabase/database.types"
 import { getCurrentScope } from "./scope"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 
 export { PLAYBOOK_TEMPLATES } from "@/lib/playbook-templates"
 
@@ -86,8 +87,8 @@ export async function getPlaybooksWithStats(): Promise<Array<Playbook & { stats:
       const r = Number(t.r) || 0
       s.totalPnL += pnl
       s.rSum += r
-      if (pnl > 0) s.wins += 1
-      else if (pnl < 0) s.losses += 1
+      if (isWin(pnl)) s.wins += 1
+      else if (isLoss(pnl)) s.losses += 1
       if (t.closed_at) {
         s.closedSeries.push({ ts: new Date(t.closed_at).getTime(), pnl, r })
       }
@@ -96,7 +97,7 @@ export async function getPlaybooksWithStats(): Promise<Array<Playbook & { stats:
 
   return (playbooks ?? []).map((p) => {
     const raw = byPlaybook.get(p.id) ?? emptyStats()
-    const winRate = raw.closedTrades > 0 ? Math.round((raw.wins / raw.closedTrades) * 100) : null
+    const winRate = winRatePct(raw.wins, raw.losses)
     const avgR = raw.closedTrades > 0 ? Number((raw.rSum / raw.closedTrades).toFixed(2)) : null
     // Expectancy = (winRate × avgWinR) + (lossRate × avgLossR). Approximate
     // with avgR per trade for now — this is the same number the prototype showed.

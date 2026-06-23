@@ -7,6 +7,7 @@ import { deterministicInsights } from "@/lib/coach-insights"
 import { getOverallStats, getPairPerformance, type OverallStats } from "@/lib/queries/analytics"
 import { getCurrentScope } from "@/lib/queries/scope"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 
 /**
  * Coach insights: produces 2-3 observations + 1-3 suggestions on the user's
@@ -278,10 +279,11 @@ function buildStatGrid(o: OverallStats): CoachStat[] {
 type SideAgg = { n: number; winRate: number; pnl: number; avgR: number }
 function aggSide(ts: { pnl: number | null; r: number | null }[]): SideAgg {
   const n = ts.length
-  const wins = ts.filter((t) => (Number(t.pnl) || 0) > 0).length
+  const wins = ts.filter((t) => isWin(Number(t.pnl) || 0)).length
+  const losses = ts.filter((t) => isLoss(Number(t.pnl) || 0)).length
   const pnl = ts.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const totalR = ts.reduce((s, t) => s + (Number(t.r) || 0), 0)
-  return { n, winRate: n ? Math.round((wins / n) * 100) : 0, pnl: round(pnl), avgR: n ? round(totalR / n) : 0 }
+  return { n, winRate: winRatePct(wins, losses) ?? 0, pnl: round(pnl), avgR: n ? round(totalR / n) : 0 }
 }
 
 type RawClosed = { pair: string; side: string; r: number | null; pnl: number | null; mood: string | null; opened_at: string | null; closed_at: string | null }

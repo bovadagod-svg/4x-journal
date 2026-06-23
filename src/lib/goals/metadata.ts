@@ -28,7 +28,7 @@ export type MetricMeta = {
 export const GOAL_METRICS: MetricMeta[] = [
   { metric: "pnl_pct",            label: "P&L (% of starting balance)", unit: "%", direction: "higher", symmetricBar: true,  description: "Net realized return for the period as a % of the balance at period start." },
   { metric: "pnl_dollars",        label: "P&L (dollars)",                unit: "$", direction: "higher", symmetricBar: true,  description: "Net realized P&L in dollars for the period." },
-  { metric: "win_rate",           label: "Win rate",                     unit: "%", direction: "higher", symmetricBar: false, description: "Percent of closed trades that were profitable." },
+  { metric: "win_rate",           label: "Win rate",                     unit: "%", direction: "higher", symmetricBar: false, description: "Profitable share of decisive trades (wins ÷ wins + losses). Breakevens (±$100) are excluded." },
   { metric: "avg_r",              label: "Average R per trade",          unit: "R", direction: "higher", symmetricBar: false, description: "Mean R-multiple across closed trades." },
   { metric: "avg_pips",           label: "Average pips per trade",       unit: "pips", direction: "higher", symmetricBar: false, description: "Mean realized pips across closed trades." },
   { metric: "profit_factor",      label: "Profit factor",                unit: "count", direction: "higher", symmetricBar: false, description: "Gross wins ÷ gross losses. ≥ 1.5 is healthy." },
@@ -132,10 +132,13 @@ export function actualForMetric(metric: GoalMetric, actuals: PeriodActuals): num
       return actuals.startingBalance > 0
         ? Number(((actuals.pnl / actuals.startingBalance) * 100).toFixed(2))
         : null
-    case "win_rate":
-      return actuals.closedTrades > 0
-        ? Number(((actuals.wins / actuals.closedTrades) * 100).toFixed(1))
+    case "win_rate": {
+      // Win rate excludes breakevens: wins / (wins + losses).
+      const decisive = actuals.wins + actuals.losses
+      return decisive > 0
+        ? Number(((actuals.wins / decisive) * 100).toFixed(1))
         : null
+    }
     case "avg_r":
       return actuals.closedTrades > 0
         ? Number((actuals.totalR / actuals.closedTrades).toFixed(2))

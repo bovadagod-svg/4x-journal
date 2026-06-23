@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { NarrativeBanner } from "./narrative-banner"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss } from "@/lib/outcome"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -117,8 +118,8 @@ function compute(trades: Trade[]): { baseline: Bucket; afterWins: Bucket; afterL
     if (i > 0) {
       const prev = closed[i - 1]
       const prevPnl = Number(prev.pnl) || 0
-      if (prevPnl > 0) { winStreak += 1; lossStreak = 0 }
-      else if (prevPnl < 0) { lossStreak += 1; winStreak = 0 }
+      if (isWin(prevPnl)) { winStreak += 1; lossStreak = 0 }
+      else if (isLoss(prevPnl)) { lossStreak += 1; winStreak = 0 }
       else { winStreak = 0; lossStreak = 0 }
     }
     if (winStreak >= 3) afterWinTrades.push(closed[i])
@@ -154,11 +155,12 @@ function compute(trades: Trade[]): { baseline: Bucket; afterWins: Bucket; afterL
 
 function bucketize(ts: Trade[]): Bucket {
   if (ts.length === 0) return { n: 0, winRate: 0, avgPnL: 0 }
-  const wins = ts.filter((t) => Number(t.pnl) > 0).length
+  const wins = ts.filter((t) => isWin(Number(t.pnl))).length
+  const losses = ts.filter((t) => isLoss(Number(t.pnl))).length
   const totalPnL = ts.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   return {
     n: ts.length,
-    winRate: (wins / ts.length) * 100,
+    winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
     avgPnL: totalPnL / ts.length,
   }
 }

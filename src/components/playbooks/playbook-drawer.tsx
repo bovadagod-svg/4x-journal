@@ -8,6 +8,7 @@ import { deletePlaybook } from "@/lib/actions/playbooks"
 import { PlaybookFormModal } from "./playbook-form-modal"
 import type { Playbook, PlaybookStats } from "@/lib/queries/playbooks"
 import type { Trade } from "@/lib/queries/trades"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 import { useDateFmt } from "@/lib/timezone-context"
 
 type Tab = "rules" | "context" | "performance" | "history"
@@ -266,8 +267,9 @@ function PerformanceTab({ playbook, trades }: { playbook: Playbook & { stats: Pl
   }
   const rows = Array.from(byPair.entries()).map(([pair, ts]) => {
     const closed = ts.filter((t) => t.status === "closed")
-    const wins = closed.filter((t) => Number(t.pnl) > 0).length
-    const wr = closed.length > 0 ? Math.round((wins / closed.length) * 100) : 0
+    const wins = closed.filter((t) => isWin(Number(t.pnl))).length
+    const losses = closed.filter((t) => isLoss(Number(t.pnl))).length
+    const wr = winRatePct(wins, losses) ?? 0
     const pnl = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
     return { pair, count: ts.length, winRate: wr, pnl }
   })

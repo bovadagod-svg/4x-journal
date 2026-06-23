@@ -20,8 +20,10 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   })
   const publicEntries = entries ?? []
 
-  const winRate = profile.trade_count > 0
-    ? Math.round((profile.win_count / profile.trade_count) * 100)
+  // Win rate excludes breakevens: wins / (wins + losses).
+  const decisiveCount = profile.win_count + profile.loss_count
+  const winRate = decisiveCount > 0
+    ? Math.round((profile.win_count / decisiveCount) * 100)
     : null
   const initials = (profile.display_name?.trim() || profile.handle || "?")
     .split(/\s+/)

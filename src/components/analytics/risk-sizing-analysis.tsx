@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss } from "@/lib/outcome"
 import type { Trade } from "@/lib/queries/trades"
 
 /**
@@ -159,14 +160,15 @@ function compute(trades: Trade[]) {
   const quartiles = qSize > 0 ? ["Q1", "Q2", "Q3", "Q4"].map((label, i) => {
     const slice = i === 3 ? sortedRisk.slice(qSize * 3) : sortedRisk.slice(qSize * i, qSize * (i + 1))
     if (slice.length === 0) return null
-    const wins = slice.filter((t) => Number(t.pnl) > 0).length
+    const wins = slice.filter((t) => isWin(Number(t.pnl))).length
+    const losses = slice.filter((t) => isLoss(Number(t.pnl))).length
     const lo = Number(slice[0].risk_amount)
     const hi = Number(slice[slice.length - 1].risk_amount)
     return {
       label,
       lo, hi,
       count: slice.length,
-      winRate: (wins / slice.length) * 100,
+      winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
       avgPnL: slice.reduce((s, t) => s + (Number(t.pnl) || 0), 0) / slice.length,
     }
   }).filter((q): q is NonNullable<typeof q> => q !== null) : []

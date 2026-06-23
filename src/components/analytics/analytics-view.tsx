@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { Icon, PairFlag } from "@/components/icons"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 import { CumulativeCurve } from "./cumulative-curve"
 import { StopTargetAnalysis } from "./stop-target-analysis"
 import { HoldTimeAnalysis } from "./hold-time-analysis"
@@ -217,7 +218,11 @@ function buildReview(s: AggStats, trades: Trade[]): React.ReactNode {
   const longs = trades.filter((t) => t.side === "long")
   const shorts = trades.filter((t) => t.side === "short")
   const sidePnl = (ts: Trade[]) => ts.reduce((acc, t) => acc + (Number(t.pnl) || 0), 0)
-  const sideWR = (ts: Trade[]) => ts.length ? Math.round((ts.filter((t) => Number(t.pnl) > 0).length / ts.length) * 100) : 0
+  const sideWR = (ts: Trade[]) => {
+    const w = ts.filter((t) => isWin(Number(t.pnl))).length
+    const l = ts.filter((t) => isLoss(Number(t.pnl))).length
+    return winRatePct(w, l) ?? 0
+  }
 
   const sorted = [...trades].sort((a, b) => (Number(b.pnl) || 0) - (Number(a.pnl) || 0))
   const biggestLoss = Number(sorted[sorted.length - 1]?.pnl) || 0
@@ -643,8 +648,8 @@ function StreakCard({ trades, entriesByTrade }: { trades: Trade[]; entriesByTrad
   let curWin = 0, maxWin = 0, curLoss = 0, maxLoss = 0
   for (const t of sorted) {
     const pnl = Number(t.pnl) || 0
-    if (pnl > 0) { curWin += 1; curLoss = 0; if (curWin > maxWin) maxWin = curWin }
-    else if (pnl < 0) { curLoss += 1; curWin = 0; if (curLoss > maxLoss) maxLoss = curLoss }
+    if (isWin(pnl)) { curWin += 1; curLoss = 0; if (curWin > maxWin) maxWin = curWin }
+    else if (isLoss(pnl)) { curLoss += 1; curWin = 0; if (curLoss > maxLoss) maxLoss = curLoss }
   }
 
   // Rule adherence from linked entries
@@ -653,17 +658,18 @@ function StreakCard({ trades, entriesByTrade }: { trades: Trade[]; entriesByTrad
   const ruleAdherence = linked.length > 0 ? Math.round((followed / linked.length) * 100) : null
 
   // Mood breakdown
-  const byMood: Record<string, { count: number; wins: number; pnl: number }> = {}
+  const byMood: Record<string, { count: number; wins: number; losses: number; pnl: number }> = {}
   for (const t of trades) {
     const m = t.mood ?? "—"
-    if (!byMood[m]) byMood[m] = { count: 0, wins: 0, pnl: 0 }
+    if (!byMood[m]) byMood[m] = { count: 0, wins: 0, losses: 0, pnl: 0 }
     byMood[m].count += 1
     const pnl = Number(t.pnl) || 0
     byMood[m].pnl += pnl
-    if (pnl > 0) byMood[m].wins += 1
+    if (isWin(pnl)) byMood[m].wins += 1
+    else if (isLoss(pnl)) byMood[m].losses += 1
   }
   const moodStats = Object.entries(byMood)
-    .map(([mood, m]) => ({ mood, count: m.count, pnl: m.pnl, winRate: (m.wins / m.count) * 100 }))
+    .map(([mood, m]) => ({ mood, count: m.count, pnl: m.pnl, winRate: winRatePct(m.wins, m.losses) ?? 0 }))
     .sort((a, b) => b.count - a.count)
 
   return (
@@ -735,12 +741,12 @@ function agg(trades: Trade[]): AggStats {
   const empty: AggStats = { count: 0, wins: 0, losses: 0, pnl: 0, winRate: 0, avgR: 0, pf: 0, expectancy: 0, avgWin: 0, avgLoss: 0, rs: [] }
   if (trades.length === 0) return empty
 
-  const wins = trades.filter((t) => Number(t.pnl) > 0)
-  const losses = trades.filter((t) => Number(t.pnl) < 0)
+  const wins = trades.filter((t) => isWin(Number(t.pnl)))
+  const losses = trades.filter((t) => isLoss(Number(t.pnl)))
   const pnl = trades.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const grossWin = wins.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
   const grossLoss = Math.abs(losses.reduce((s, t) => s + (Number(t.pnl) || 0), 0))
-  const winRate = (wins.length / trades.length) * 100
+  const winRate = winRatePct(wins.length, losses.length) ?? 0
   const avgR = trades.reduce((s, t) => s + (Number(t.r) || 0), 0) / trades.length
   const pf = grossLoss > 0 ? grossWin / grossLoss : grossWin
   const avgWin = wins.length > 0 ? grossWin / wins.length : 0

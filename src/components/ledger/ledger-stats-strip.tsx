@@ -1,5 +1,6 @@
 import { formatUSD } from "@/lib/finance"
 import type { Trade, JournalEntry } from "@/lib/queries/trades"
+import { isWin, isLoss, winRatePct } from "@/lib/outcome"
 
 export function LedgerStatsStrip({
   trades,
@@ -10,14 +11,15 @@ export function LedgerStatsStrip({
 }) {
   const closed = trades.filter((t) => t.status === "closed")
   const total = closed.length
-  const wins = closed.filter((t) => Number(t.pnl) > 0).length
-  const losses = closed.filter((t) => Number(t.pnl) < 0).length
+  const wins = closed.filter((t) => isWin(Number(t.pnl))).length
+  const losses = closed.filter((t) => isLoss(Number(t.pnl))).length
   const bes = closed.length - wins - losses
+  const decisive = wins + losses
   const totalPnl = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
-  const winRate = total > 0 ? Math.round((wins / total) * 100) : 0
+  const winRate = winRatePct(wins, losses) ?? 0
   const avgR = total > 0 ? closed.reduce((s, t) => s + (Number(t.r) || 0), 0) / total : 0
-  const grossWin = closed.filter((t) => Number(t.pnl) > 0).reduce((s, t) => s + Number(t.pnl), 0)
-  const grossLoss = Math.abs(closed.filter((t) => Number(t.pnl) < 0).reduce((s, t) => s + Number(t.pnl), 0))
+  const grossWin = closed.filter((t) => isWin(Number(t.pnl))).reduce((s, t) => s + Number(t.pnl), 0)
+  const grossLoss = Math.abs(closed.filter((t) => isLoss(Number(t.pnl))).reduce((s, t) => s + Number(t.pnl), 0))
   const pf = grossLoss > 0 ? grossWin / grossLoss : 0
 
   // Rule adherence from linked journal entries (no entry = assume followed).
@@ -28,7 +30,7 @@ export function LedgerStatsStrip({
   const stats = [
     { label: "Total Trades", value: String(total), sub: `${wins}W · ${losses}L · ${bes}BE`, color: "var(--c-fg)" },
     { label: "Net P&L", value: formatUSD(totalPnl, { signed: true }), sub: "filtered period", color: totalPnl >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)" },
-    { label: "Win Rate", value: `${winRate}%`, sub: `${wins} of ${total}`, color: "var(--c-fg)" },
+    { label: "Win Rate", value: `${winRate}%`, sub: `${wins} of ${decisive} decisive`, color: "var(--c-fg)" },
     { label: "Avg R", value: `${avgR.toFixed(2)}R`, sub: "per trade", color: avgR >= 1 ? "var(--c-green-bright)" : "var(--c-fg)" },
     { label: "Profit Factor", value: pf.toFixed(2), sub: pf >= 1.5 ? "healthy" : "below target", color: "var(--c-purple-bright)" },
     { label: "Rule Adherence", value: ruleAdherence != null ? `${ruleAdherence}%` : "—", sub: ruleAdherence != null ? "rules followed" : "no entries", color: ruleAdherence != null && ruleAdherence >= 90 ? "var(--c-green-bright)" : "var(--c-amber)" },

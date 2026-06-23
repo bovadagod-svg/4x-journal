@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss } from "@/lib/outcome"
 import type { Trade } from "@/lib/queries/trades"
 
 const MOOD_COLORS: Record<string, string> = {
@@ -111,13 +112,14 @@ function compute(trades: Trade[]) {
     byMood.set(key, arr)
   }
   const rows = Array.from(byMood.entries()).map(([mood, ts]) => {
-    const wins = ts.filter((t) => Number(t.pnl) > 0).length
+    const wins = ts.filter((t) => isWin(Number(t.pnl))).length
+    const losses = ts.filter((t) => isLoss(Number(t.pnl))).length
     const totalPnl = ts.reduce((s, t) => s + (Number(t.pnl) || 0), 0)
     const totalR = ts.reduce((s, t) => s + (Number(t.r) || 0), 0)
     return {
       mood,
       count: ts.length,
-      winRate: ts.length > 0 ? (wins / ts.length) * 100 : 0,
+      winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
       avgR: ts.length > 0 ? totalR / ts.length : 0,
       avgPnL: ts.length > 0 ? totalPnl / ts.length : 0,
     }

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Icon, PairFlag } from "@/components/icons"
 import type { JournalEntry, Trade } from "@/lib/queries/trades"
 import { formatUSD } from "@/lib/finance"
+import { isWin, isLoss } from "@/lib/outcome"
 import { OpenEntryRowWrapper } from "@/components/journal/open-entry-buttons"
 import { LocalTime } from "@/lib/timezone-context"
 
@@ -39,8 +40,8 @@ export function JournalFeed({ entries, trades }: { entries: JournalEntry[]; trad
             const t = e.trade_id ? tradeMap.get(e.trade_id) : undefined
             const result = !t ? "neutral"
               : t.pnl == null ? "neutral"
-              : Number(t.pnl) > 0 ? "win"
-              : Number(t.pnl) < 0 ? "loss"
+              : isWin(Number(t.pnl)) ? "win"
+              : isLoss(Number(t.pnl)) ? "loss"
               : "breakeven"
             const iconBg =
               result === "win" ? "var(--c-green-soft)"

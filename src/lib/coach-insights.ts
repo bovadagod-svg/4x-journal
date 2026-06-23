@@ -13,6 +13,7 @@
  */
 
 import type { CoachInsightsPayload, CoachSuggestion } from "@/lib/actions/coach"
+import { isWin, isLoss } from "@/lib/outcome"
 
 export type DetTrade = {
   pair: string
@@ -26,6 +27,13 @@ export type DetTrade = {
 export type DetEntry = {
   trade_id: string | null
   rule_break: boolean
+}
+
+/** Win rate (%) over decisive trades — breakevens (±$100) excluded. */
+function wrOf(trades: DetTrade[]): number {
+  const w = trades.filter((t) => isWin(Number(t.pnl))).length
+  const l = trades.filter((t) => isLoss(Number(t.pnl))).length
+  return w + l > 0 ? (w / (w + l)) * 100 : 0
 }
 
 export function deterministicInsights(args: {
@@ -49,9 +57,9 @@ export function deterministicInsights(args: {
   const observations: string[] = []
   const suggestions: CoachSuggestion[] = []
 
-  const wins = trades.filter((t) => Number(t.pnl) > 0)
-  const losses = trades.filter((t) => Number(t.pnl) < 0)
-  const winRate = (wins.length / trades.length) * 100
+  const wins = trades.filter((t) => isWin(Number(t.pnl)))
+  const losses = trades.filter((t) => isLoss(Number(t.pnl)))
+  const winRate = wrOf(trades)
   const avgR = trades.reduce((s, t) => s + Number(t.r), 0) / trades.length
   const totalPnl = trades.reduce((s, t) => s + Number(t.pnl), 0)
   const grossWin = wins.reduce((s, t) => s + Number(t.pnl), 0)
@@ -75,7 +83,7 @@ export function deterministicInsights(args: {
       pair,
       count: ts.length,
       pnl: ts.reduce((s, t) => s + Number(t.pnl), 0),
-      wr: (ts.filter((t) => Number(t.pnl) > 0).length / ts.length) * 100,
+      wr: wrOf(ts),
       avgR: ts.reduce((s, t) => s + Number(t.r), 0) / ts.length,
     }))
     .filter((p) => p.count >= 3)
@@ -156,8 +164,8 @@ function computeSideBias(trades: DetTrade[]): string | null {
   const longs = trades.filter((t) => t.side === "long")
   const shorts = trades.filter((t) => t.side === "short")
   if (longs.length < 5 || shorts.length < 5) return null
-  const longWr = (longs.filter((t) => Number(t.pnl) > 0).length / longs.length) * 100
-  const shortWr = (shorts.filter((t) => Number(t.pnl) > 0).length / shorts.length) * 100
+  const longWr = wrOf(longs)
+  const shortWr = wrOf(shorts)
   const delta = longWr - shortWr
   if (Math.abs(delta) < 15) return null
   if (delta > 0) {
@@ -180,7 +188,7 @@ function computeDowLeak(trades: DetTrade[]): { observation: string; suggestion?:
     .map(([d, ts]) => ({
       day: d,
       count: ts.length,
-      wr: (ts.filter((t) => Number(t.pnl) > 0).length / ts.length) * 100,
+      wr: wrOf(ts),
       pnl: ts.reduce((s, t) => s + Number(t.pnl), 0),
     }))
   if (dayAgg.length === 0) return null
@@ -204,8 +212,8 @@ function computeStreakDrift(trades: DetTrade[]): { observation: string; suggesti
     new Date(a.closed_at!).getTime() - new Date(b.closed_at!).getTime(),
   )
   const last10 = sorted.slice(-10)
-  const last10Wr = (last10.filter((t) => Number(t.pnl) > 0).length / 10) * 100
-  const allWr = (sorted.filter((t) => Number(t.pnl) > 0).length / sorted.length) * 100
+  const last10Wr = wrOf(last10)
+  const allWr = wrOf(sorted)
   const delta = last10Wr - allWr
   if (delta < -20) {
     return {

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { formatUSD } from "@/lib/finance"
 import type { Trade } from "@/lib/queries/trades"
 import { SESSION, inWindow } from "@/lib/sessions"
+import { isWin, isLoss } from "@/lib/outcome"
 
 /**
  * FX session analysis: split closed trades into the major trading sessions
@@ -253,7 +254,8 @@ function compute(trades: Trade[]) {
 
   const rows = SESSIONS.map((s) => {
     const inS = eligible.filter((t) => inSession(new Date(t.opened_at!).getUTCHours(), s))
-    const wins = inS.filter((t) => Number(t.pnl) > 0).length
+    const wins = inS.filter((t) => isWin(Number(t.pnl))).length
+    const losses = inS.filter((t) => isLoss(Number(t.pnl))).length
     const totalPnL = inS.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0)
     const totalR = inS.reduce((sum, t) => sum + (Number(t.r) || 0), 0)
     return {
@@ -263,7 +265,7 @@ function compute(trades: Trade[]) {
       startHour: s.start,
       endHour: s.end,
       count: inS.length,
-      winRate: inS.length > 0 ? (wins / inS.length) * 100 : 0,
+      winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
       avgR: inS.length > 0 ? totalR / inS.length : 0,
       avgPnL: inS.length > 0 ? totalPnL / inS.length : 0,
       expectancy: inS.length > 0 ? totalPnL / inS.length : 0,
@@ -273,13 +275,14 @@ function compute(trades: Trade[]) {
   // Hourly histogram (24 bars)
   const hourly = Array.from({ length: 24 }, (_, hour) => {
     const inH = eligible.filter((t) => new Date(t.opened_at!).getUTCHours() === hour)
-    const wins = inH.filter((t) => Number(t.pnl) > 0).length
+    const wins = inH.filter((t) => isWin(Number(t.pnl))).length
+    const losses = inH.filter((t) => isLoss(Number(t.pnl))).length
     const pnl = inH.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0)
     return {
       hour,
       count: inH.length,
       pnl,
-      winRate: inH.length > 0 ? (wins / inH.length) * 100 : 0,
+      winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
     }
   })
 
