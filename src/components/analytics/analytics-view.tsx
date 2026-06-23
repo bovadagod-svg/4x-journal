@@ -40,6 +40,8 @@ export function AnalyticsView({
   accountMap,
   fillsByTrade,
   simStartBalance,
+  filtersActive = false,
+  onClearFilters,
 }: {
   trades: Trade[]
   /** Fixed last-12-months window for the Monthly P&L + Daily heatmap, which
@@ -51,6 +53,10 @@ export function AnalyticsView({
   accountMap: Map<string, string>
   fillsByTrade: Map<string, TradeFill[]>
   simStartBalance: number
+  /** True when one or more categorical filters are constraining the trade set
+   * (drives the count copy and the empty-state). */
+  filtersActive?: boolean
+  onClearFilters?: () => void
 }) {
   // The page-level RangeFilterBar drives the date window via URL params,
   // so the `trades` prop is already scoped to the user's chosen range.
@@ -63,10 +69,33 @@ export function AnalyticsView({
   )
   const stats = useMemo(() => agg(filtered), [filtered])
 
+  // Filters can narrow the set to nothing — short-circuit with a friendly
+  // prompt instead of rendering a page full of empty cards.
+  if (filtered.length === 0) {
+    return (
+      <div className="card" style={{ textAlign: "center", padding: "36px 20px" }}>
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--c-purple-soft)", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
+          <Icon name="filter" size={18} color="var(--c-purple-bright)" />
+        </div>
+        <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600 }}>
+          No closed trades match these filters
+        </h3>
+        <p style={{ margin: "6px auto 0", maxWidth: 420, fontSize: 13, color: "var(--c-fg-muted)", lineHeight: 1.55 }}>
+          Nothing in the current range fits the selected Pair / Playbook / Result / Side / Account / Session. Loosen or clear the filters to see your analytics.
+        </p>
+        {filtersActive && onClearFilters && (
+          <button className="btn" style={{ marginTop: 14, fontSize: 12 }} onClick={onClearFilters}>
+            <Icon name="x" size={12} /> Clear filters
+          </button>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="card-subtitle" style={{ marginLeft: 4 }}>
-        {filtered.length} closed trade{filtered.length === 1 ? "" : "s"} in this range
+        {filtered.length} closed trade{filtered.length === 1 ? "" : "s"} {filtersActive ? "match your filters" : "in this range"}
       </div>
 
       {/* Plain-English review — read it at a glance, then dig into the cards */}

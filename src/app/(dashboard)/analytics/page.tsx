@@ -6,10 +6,21 @@ import { getJournalEntries, getUserTrades } from "@/lib/queries/trades"
 import { getFillsForTrades } from "@/lib/queries/trade-fills"
 import { getUserAccounts, getUserPlaybooks } from "@/lib/queries/accounts"
 import { LogTradeButton } from "@/components/trades/log-trade-button"
-import { AnalyticsView } from "@/components/analytics/analytics-view"
-import { TradingCalendar } from "@/components/dashboard/trading-calendar"
+import { AnalyticsWorkspace } from "@/components/analytics/analytics-workspace"
 import { RangeFilterBar } from "@/components/shell/range-filter-bar"
 import { parseRangeSelection, rangeBoundsIso, rangeLabel } from "@/lib/range"
+
+/** Shared shell for the page-level filter bar that sits below the header. */
+const FILTER_BAR_SHELL: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  padding: 12,
+  background: "var(--c-bg-elev-1)",
+  border: "1px solid var(--c-border)",
+  borderRadius: "var(--radius-lg)",
+}
 
 export default async function AnalyticsPage({
   searchParams,
@@ -48,8 +59,11 @@ export default async function AnalyticsPage({
         <SectionHeader
           title={m.title}
           subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
-          actions={<><RangeFilterBar /><LogTradeButton /></>}
+          actions={<LogTradeButton />}
         />
+        <div style={FILTER_BAR_SHELL}>
+          <RangeFilterBar />
+        </div>
         <SectionStub
           icon={m.icon}
           title={`Analytics unlock at 5 closed trades in this range — you have ${closedCount}`}
@@ -85,18 +99,13 @@ export default async function AnalyticsPage({
         title={m.title}
         subtitle={`${m.subtitle} · ${rangeLabel(range)}`}
         actions={
-          <>
-            <RangeFilterBar />
-            <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
-              <Icon name="external" size={13} /> <span>Export PDF</span>
-            </button>
-          </>
+          <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }} title="Coming soon">
+            <Icon name="external" size={13} /> <span>Export PDF</span>
+          </button>
         }
       />
 
-      <TradingCalendar trades={last12moTrades} />
-
-      <AnalyticsView
+      <AnalyticsWorkspace
         trades={trades}
         last12moTrades={last12moTrades}
         entriesByTrade={entriesByTrade}
