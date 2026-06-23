@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { formatUSD } from "@/lib/finance"
 import { slPips, tpPips, realizedPips, pipBucket, bucketSortKey, formatPips } from "@/lib/pip"
 import type { Trade } from "@/lib/queries/trades"
@@ -78,7 +78,7 @@ export function StopTargetAnalysis({ trades }: { trades: Trade[] }) {
       {/* R:R distribution + realized vs planned scatter */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14 }}>
         <RRDistribution rows={stats.rrDist} />
-        <PlannedVsRealizedScatter rows={stats.scatterRows} />
+        <PlannedVsRealized rows={stats.scatterRows} />
       </div>
     </>
   )
@@ -392,7 +392,7 @@ function RRDistribution({ rows }: { rows: { label: string; count: number }[] }) 
   )
 }
 
-function PlannedVsRealizedScatter({ rows }: { rows: ScatterPoint[] }) {
+function PlannedVsRealized({ rows }: { rows: ScatterPoint[] }) {
   if (rows.length === 0) {
     return (
       <div className="card">
@@ -402,59 +402,200 @@ function PlannedVsRealizedScatter({ rows }: { rows: ScatterPoint[] }) {
       </div>
     )
   }
-  const W = 280
-  const H = 180
-  const PAD = 24
-  const xMax = Math.max(...rows.map((r) => r.plannedRR), 4)
-  const xMin = 0
-  const yMax = Math.max(...rows.map((r) => Math.abs(r.realizedR)), 2)
-  const yMin = -yMax
 
-  const sx = (x: number) => PAD + ((x - xMin) / (xMax - xMin)) * (W - PAD * 2)
-  const sy = (y: number) => H - PAD - ((y - yMin) / (yMax - yMin)) * (H - PAD * 2)
+  const n = rows.length
+  const avgPlanned = rows.reduce((s, r) => s + r.plannedRR, 0) / n
+  const avgRealized = rows.reduce((s, r) => s + r.realizedR, 0) / n
+  const capturePct = avgPlanned > 0 ? (avgRealized / avgPlanned) * 100 : null
 
-  const hits = rows.filter((r) => r.realizedR >= r.plannedRR * 0.9).length
-  const partial = rows.filter((r) => r.realizedR > 0 && r.realizedR < r.plannedRR * 0.9).length
-  const losses = rows.filter((r) => r.realizedR < 0).length
+  // Outcome split — categories are exhaustive (every trade lands in exactly one).
+  const counts = { hit: 0, partial: 0, stopped: 0 }
+  for (const r of rows) counts[captureClass(r)]++
+
+  const captureColor =
+    capturePct == null ? "var(--c-fg)"
+    : capturePct >= 80 ? "var(--c-green-bright)"
+    : capturePct >= 40 ? "var(--c-amber)"
+    : "var(--c-red-bright)"
+
+  const note =
+    capturePct == null ? null
+    : capturePct >= 80 ? "You're banking close to your full planned reward — targets and exits are well matched."
+    : capturePct >= 40 ? "You leave some reward on the table — trailing stops or scaling out may be cutting winners early."
+    : "You capture only a fraction of what you plan — targets may be too ambitious, or you're exiting winners too soon."
 
   return (
     <div className="card">
       <div style={{ marginBottom: 14 }}>
         <h3 className="card-title">Planned vs. Realized R</h3>
-        <p className="card-subtitle">Each dot is a trade. X = planned R:R, Y = actual R achieved.</p>
+        <p className="card-subtitle">Each dot is a trade — planned R:R across the bottom, the R you actually booked up the side.</p>
       </div>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-        <svg width={W} height={H} style={{ overflow: "visible" }}>
-          {/* Y=0 line */}
-          <line x1={PAD} x2={W - PAD} y1={sy(0)} y2={sy(0)} stroke="var(--c-border)" strokeWidth={1} strokeDasharray="2 3" />
-          {/* y=x diagonal (perfect target hit) */}
-          <line
-            x1={sx(xMin)} y1={sy(xMin)}
-            x2={sx(xMax)} y2={sy(xMax)}
-            stroke="rgba(105, 50, 212, 0.35)" strokeWidth={1} strokeDasharray="3 4"
-          />
-          {/* Axes labels */}
-          <text x={PAD} y={H - 4} fontSize={9} fill="var(--c-fg-dim)" fontFamily="var(--font-mono)">0</text>
-          <text x={W - PAD - 12} y={H - 4} fontSize={9} fill="var(--c-fg-dim)" fontFamily="var(--font-mono)">{xMax.toFixed(1)}R</text>
-          <text x={2} y={sy(yMax)} fontSize={9} fill="var(--c-fg-dim)" fontFamily="var(--font-mono)">+{yMax.toFixed(1)}R</text>
-          <text x={2} y={sy(yMin) + 4} fontSize={9} fill="var(--c-fg-dim)" fontFamily="var(--font-mono)">{yMin.toFixed(1)}R</text>
-          {rows.map((r, i) => (
-            <circle
-              key={i}
-              cx={sx(r.plannedRR)}
-              cy={sy(r.realizedR)}
-              r={3}
-              fill={r.realizedR >= 0 ? "rgba(17, 196, 88, 0.7)" : "rgba(190, 51, 61, 0.7)"}
-            />
-          ))}
-        </svg>
+
+      {/* At-a-glance summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
+        <MiniStat label="Avg planned" value={`1 : ${avgPlanned.toFixed(1)}`} />
+        <MiniStat label="Avg realized" value={`${avgRealized >= 0 ? "+" : ""}${avgRealized.toFixed(2)}R`} color={avgRealized >= 0 ? "var(--c-green-bright)" : "var(--c-red-bright)"} />
+        <MiniStat label="Capture rate" value={capturePct == null ? "—" : `${Math.round(capturePct)}%`} color={captureColor} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, fontSize: 11.5 }}>
-        <ScatterStat label="Hit target" count={hits} total={rows.length} color="var(--c-green-bright)" />
-        <ScatterStat label="Partial win" count={partial} total={rows.length} color="var(--c-amber)" />
-        <ScatterStat label="Stopped out" count={losses} total={rows.length} color="var(--c-red-bright)" />
+
+      <CaptureScatter rows={rows} />
+
+      {/* Legend */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 10, fontSize: 11, color: "var(--c-fg-muted)" }}>
+        <LegendDot color="var(--c-green-bright)" label="Hit target" />
+        <LegendDot color="var(--c-amber)" label="Partial" />
+        <LegendDot color="var(--c-red-bright)" label="Stopped out" />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 16, borderTop: "1.5px dashed rgba(183, 156, 255, 0.9)" }} />
+          target line (realized = planned)
+        </span>
+      </div>
+
+      {note && (
+        <p style={{ margin: "12px 0 0", fontSize: 11.5, color: "var(--c-fg-muted)", lineHeight: 1.5 }}>{note}</p>
+      )}
+
+      {/* Outcome split */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, fontSize: 11.5, marginTop: 14 }}>
+        <ScatterStat label="Hit target" count={counts.hit} total={n} color="var(--c-green-bright)" />
+        <ScatterStat label="Partial win" count={counts.partial} total={n} color="var(--c-amber)" />
+        <ScatterStat label="Stopped out" count={counts.stopped} total={n} color="var(--c-red-bright)" />
       </div>
     </div>
+  )
+}
+
+type CaptureClass = "hit" | "partial" | "stopped"
+
+/** A trade hit its target if it booked ≥90% of planned R; a positive-but-short
+ * result is a partial; anything ≤0 was stopped or scratched. */
+function captureClass(r: ScatterPoint): CaptureClass {
+  if (r.realizedR <= 0) return "stopped"
+  if (r.realizedR >= r.plannedRR * 0.9) return "hit"
+  return "partial"
+}
+
+const CAPTURE_COLOR: Record<CaptureClass, string> = {
+  hit: "var(--c-green-bright)",
+  partial: "var(--c-amber)",
+  stopped: "var(--c-red-bright)",
+}
+
+/**
+ * Responsive scatter of planned R:R (x) vs. realized R (y). Width tracks the
+ * card via ResizeObserver so it always fills the column (no dead space), while
+ * height stays fixed so dots and ticks render at true pixel sizes. Gridlines,
+ * a highlighted zero line, a shaded loss band, and the dashed "realized =
+ * planned" diagonal give the dots a frame to be read against.
+ */
+function CaptureScatter({ rows }: { rows: ScatterPoint[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(640)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    setWidth(el.clientWidth)
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width
+      if (w && w > 0) setWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const H = 280
+  const padL = 40, padR = 14, padT = 14, padB = 28
+  const W = Math.max(width, 260)
+  const plotW = W - padL - padR
+  const plotH = H - padT - padB
+
+  const xMax = Math.max(3, Math.ceil(Math.max(...rows.map((r) => r.plannedRR))))
+  const yMax = Math.max(2, Math.ceil(Math.max(...rows.map((r) => Math.abs(r.realizedR)))))
+  const yMin = -yMax
+
+  const sx = (x: number) => padL + (Math.max(0, Math.min(xMax, x)) / xMax) * plotW
+  const sy = (y: number) => padT + (1 - (Math.max(yMin, Math.min(yMax, y)) - yMin) / (yMax - yMin)) * plotH
+
+  const xTicks = Array.from({ length: xMax + 1 }, (_, i) => i)
+  const yStep = yMax <= 3 ? 1 : Math.ceil(yMax / 3)
+  const yTicks = [0]
+  for (let y = yStep; y <= yMax; y += yStep) { yTicks.push(y); yTicks.push(-y) }
+
+  // Perfect-hit diagonal (realized = planned), clipped to the top edge.
+  const xd = Math.min(xMax, yMax)
+
+  return (
+    <div ref={ref} style={{ width: "100%" }}>
+      <svg
+        width={W}
+        height={H}
+        role="img"
+        aria-label="Scatter of planned reward-to-risk versus realized R, one dot per trade"
+        style={{ display: "block", background: "var(--c-bg-elev-2)", borderRadius: 8, border: "1px solid var(--c-border)" }}
+      >
+        {/* Loss band (realized < 0) */}
+        <rect x={padL} y={sy(0)} width={plotW} height={sy(yMin) - sy(0)} fill="rgba(190, 51, 61, 0.06)" />
+
+        {/* X gridlines + labels */}
+        {xTicks.map((t) => (
+          <g key={`x${t}`}>
+            <line x1={sx(t)} x2={sx(t)} y1={padT} y2={padT + plotH} stroke="var(--c-border)" strokeWidth={1} strokeOpacity={0.4} />
+            <text x={sx(t)} y={H - 9} fontSize={9.5} fill="var(--c-fg-dim)" fontFamily="var(--font-mono)" textAnchor="middle">{t}R</text>
+          </g>
+        ))}
+
+        {/* Y gridlines + labels (zero line emphasised) */}
+        {yTicks.map((t) => (
+          <g key={`y${t}`}>
+            <line
+              x1={padL} x2={padL + plotW} y1={sy(t)} y2={sy(t)}
+              stroke={t === 0 ? "var(--c-fg-dim)" : "var(--c-border)"}
+              strokeWidth={1} strokeOpacity={t === 0 ? 0.65 : 0.35}
+              strokeDasharray={t === 0 ? undefined : "2 3"}
+            />
+            <text x={padL - 6} y={sy(t) + 3} fontSize={9.5} fill="var(--c-fg-dim)" fontFamily="var(--font-mono)" textAnchor="end">{t > 0 ? "+" : ""}{t}R</text>
+          </g>
+        ))}
+
+        {/* Perfect-hit diagonal */}
+        <line x1={sx(0)} y1={sy(0)} x2={sx(xd)} y2={sy(xd)} stroke="rgba(183, 156, 255, 0.85)" strokeWidth={1.5} strokeDasharray="4 4" />
+
+        {/* Dots */}
+        {rows.map((r, i) => (
+          <circle
+            key={i}
+            cx={sx(r.plannedRR)}
+            cy={sy(r.realizedR)}
+            r={4}
+            fill={CAPTURE_COLOR[captureClass(r)]}
+            fillOpacity={0.82}
+            stroke="var(--c-bg-elev-2)"
+            strokeWidth={1}
+          >
+            <title>{`Planned 1:${r.plannedRR.toFixed(1)} · Realized ${r.realizedR >= 0 ? "+" : ""}${r.realizedR.toFixed(2)}R`}</title>
+          </circle>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ background: "var(--c-bg-elev-2)", borderRadius: 8, padding: "8px 10px" }}>
+      <div style={{ fontSize: 10, color: "var(--c-fg-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+      <div className="tnum" style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600, color: color ?? "var(--c-fg)", marginTop: 2 }}>{value}</div>
+    </div>
+  )
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+      {label}
+    </span>
   )
 }
 
