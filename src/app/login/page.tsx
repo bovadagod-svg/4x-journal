@@ -1,12 +1,21 @@
 "use client"
 
 import { useActionState } from "react"
-import { Icon } from "@/components/icons"
-import { sendMagicLink, type LoginState } from "./actions"
+import { signIn, type LoginState } from "./actions"
+
+const inputStyle = {
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid var(--c-border)",
+  background: "var(--c-bg-elev-2)",
+  color: "var(--c-fg)",
+  fontSize: 14,
+  outline: "none",
+}
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState<LoginState, FormData>(
-    sendMagicLink,
+    signIn,
     undefined,
   )
 
@@ -65,61 +74,45 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {state?.ok ? (
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 10,
-              background: "var(--c-green-soft)",
-              color: "var(--c-green-bright)",
-              border: "1px solid rgba(17, 196, 88, 0.25)",
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
+        <form action={action} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--c-fg-muted)", fontWeight: 500 }}>Email</span>
+            <input
+              name="email"
+              type="email"
+              required
+              autoFocus
+              autoComplete="username"
+              placeholder="you@example.com"
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--c-fg-muted)", fontWeight: 500 }}>Password</span>
+            <input
+              name="password"
+              type="password"
+              required
+              autoComplete="current-password"
+              placeholder="••••••••"
+              style={inputStyle}
+            />
+          </label>
+          {state?.error && (
+            <div style={{ fontSize: 12, color: "var(--c-red-bright)" }}>{state.error}</div>
+          )}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={pending}
+            style={{ justifyContent: "center", padding: "10px 14px", fontSize: 13 }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Icon name="check" size={16} />
-              <strong>Check your inbox</strong>
-            </div>
-            We sent a magic link to <span style={{ fontFamily: "var(--font-mono)" }}>{state.sentTo}</span>. Click it to sign in.
-          </div>
-        ) : (
-          <form action={action} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 12, color: "var(--c-fg-muted)", fontWeight: 500 }}>Email</span>
-              <input
-                name="email"
-                type="email"
-                required
-                autoFocus
-                placeholder="you@example.com"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid var(--c-border)",
-                  background: "var(--c-bg-elev-2)",
-                  color: "var(--c-fg)",
-                  fontSize: 14,
-                  outline: "none",
-                }}
-              />
-            </label>
-            {state && !state.ok && (
-              <div style={{ fontSize: 12, color: "var(--c-red-bright)" }}>{state.error}</div>
-            )}
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={pending}
-              style={{ justifyContent: "center", padding: "10px 14px", fontSize: 13 }}
-            >
-              {pending ? "Sending…" : "Send magic link"}
-            </button>
-            <p style={{ margin: 0, fontSize: 11.5, color: "var(--c-fg-dim)", lineHeight: 1.5 }}>
-              We&apos;ll email you a link to sign in. No password needed. New accounts are created automatically.
-            </p>
-          </form>
-        )}
+            {pending ? "Signing in…" : "Sign in"}
+          </button>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--c-fg-dim)", lineHeight: 1.5 }}>
+            Need access? Ask your team admin to set up your account.
+          </p>
+        </form>
       </div>
     </div>
   )

@@ -1,36 +1,27 @@
 "use server"
 
-import { headers } from "next/headers"
+import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 
-export type LoginState =
-  | { ok: true; sentTo: string }
-  | { ok: false; error: string }
-  | undefined
+export type LoginState = { error: string } | undefined
 
-export async function sendMagicLink(
+export async function signIn(
   _prev: LoginState,
   formData: FormData,
 ): Promise<LoginState> {
   const email = String(formData.get("email") || "").trim().toLowerCase()
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return { ok: false, error: "Enter a valid email address." }
+  const password = String(formData.get("password") || "")
+  if (!email || !password) {
+    return { error: "Enter your email and password." }
   }
 
   const supabase = await createClient()
-  const h = await headers()
-  const proto = h.get("x-forwarded-proto") ?? "http"
-  const host = h.get("host") ?? "localhost:3000"
-  const origin = `${proto}://${host}`
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
 
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: `${origin}/auth/callback`,
-      shouldCreateUser: true,
-    },
-  })
+  // Don't leak whether it was the email or the password that was wrong.
+  if (error) return { error: "Invalid email or password." }
 
-  if (error) return { ok: false, error: error.message }
-  return { ok: true, sentTo: email }
+  // signInWithPassword set the session cookies via the server client; the proxy
+  // will see the user on the next request. Send them into the app.
+  redirect("/dashboard")
 }
