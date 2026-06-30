@@ -608,7 +608,7 @@ export async function brokerModifyPosition(args: {
     .select("id, user_id, account_id, external_id, external_provider, status, stop_price, target_price")
     .eq("id", args.tradeId)
     .maybeSingle()
-  if (!trade || trade.user_id !== user.id) return { ok: false, error: "Trade not found." }
+  if (!trade) return { ok: false, error: "Trade not found." }  // RLS scopes to the caller's team
   if (trade.external_provider !== "tradelocker" || !trade.external_id) {
     return { ok: false, error: "Only TradeLocker-synced trades can be modified from here." }
   }
@@ -688,7 +688,7 @@ export async function brokerClosePosition(tradeId: string): Promise<{ ok: true }
     .select("id, user_id, account_id, external_id, external_provider, status, notes")
     .eq("id", tradeId)
     .maybeSingle()
-  if (!trade || trade.user_id !== user.id) return { ok: false, error: "Trade not found." }
+  if (!trade) return { ok: false, error: "Trade not found." }  // RLS scopes to the caller's team
   if (trade.external_provider !== "tradelocker" || !trade.external_id) {
     return { ok: false, error: "Only TradeLocker-synced trades can be closed from here." }
   }
@@ -774,10 +774,13 @@ export async function getLiveQuotesForOpen(): Promise<LiveQuotesResult> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { byTradeId: {}, fetchedAt: new Date().toISOString(), empty: true }
 
+  // Team mode: show live quotes for every open TradeLocker position the team
+  // holds (RLS already scopes the SELECT to the caller's team). Filtering by
+  // user_id hid teammates' synced positions — synced trades carry the
+  // connection owner's user_id, so a non-owner saw no live P&L.
   const { data: opens } = await supabase
     .from("trades")
     .select("id, account_id, external_id, side, size, entry_price, pair")
-    .eq("user_id", user.id)
     .eq("status", "open")
     .eq("external_provider", "tradelocker")
   if (!opens || opens.length === 0) {

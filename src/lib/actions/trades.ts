@@ -37,7 +37,12 @@ export async function getTradeDetail(tradeId: string): Promise<TradeDetail> {
     supabase.from("playbooks").select("id, name, color, icon").order("name"),
   ])
 
-  if (!trade || trade.user_id !== user.id) return null
+  // Team mode: RLS already scopes the SELECT above to trades in the caller's
+  // team, so a returned row is authorized. Don't re-check trade.user_id ===
+  // user.id — that's "who created it" (e.g. the connection owner for synced
+  // trades), so the self-check wrongly rejected teammates' trades and left the
+  // detail drawer stuck on "Loading…".
+  if (!trade) return null
 
   const playbook = trade.playbook_id
     ? (playbookOptions ?? []).find((p) => p.id === trade.playbook_id) ?? null
@@ -73,11 +78,13 @@ export async function setTradePlaybook(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: "Not signed in." }
 
+  // Team mode: RLS scopes the update to trades in the caller's team. Don't add
+  // .eq("user_id", user.id) — that silently no-ops on teammates' trades (e.g.
+  // broker-synced ones owned by the connection creator).
   const { error } = await supabase
     .from("trades")
     .update({ playbook_id: playbookId })
     .eq("id", tradeId)
-    .eq("user_id", user.id)
 
   if (error) return { ok: false, error: error.message }
 
@@ -326,7 +333,8 @@ export async function addExitFill(formData: FormData): Promise<{ ok: boolean; er
     .eq("id", parsed.data.trade_id)
     .single()
   if (!trade) return { ok: false, error: "Trade not found." }
-  if (trade.user_id !== user.id) return { ok: false, error: "Not your trade." }
+  // Team mode: RLS scopes this SELECT to the caller's team, so a returned row
+  // is authorized for any member. No trade.user_id === user.id self-check.
   if (trade.status === "pending") return { ok: false, error: "Pending order has no entry yet — fill it first." }
   if (trade.status === "cancelled") return { ok: false, error: "Trade was cancelled." }
 
@@ -384,7 +392,8 @@ export async function addEntryFill(formData: FormData): Promise<{ ok: boolean; e
     .eq("id", parsed.data.trade_id)
     .single()
   if (!trade) return { ok: false, error: "Trade not found." }
-  if (trade.user_id !== user.id) return { ok: false, error: "Not your trade." }
+  // Team mode: RLS scopes this SELECT to the caller's team, so a returned row
+  // is authorized for any member. No trade.user_id === user.id self-check.
   if (trade.status === "cancelled") return { ok: false, error: "Trade was cancelled." }
   if (trade.status === "closed") return { ok: false, error: "Trade is already closed." }
 
@@ -423,7 +432,7 @@ export async function cancelPendingOrder(formData: FormData): Promise<{ ok: bool
     .select("status, user_id")
     .eq("id", parsed.data.trade_id)
     .single()
-  if (!trade || trade.user_id !== user.id) return { ok: false, error: "Trade not found." }
+  if (!trade) return { ok: false, error: "Trade not found." }
   if (trade.status !== "pending") return { ok: false, error: "Can only cancel pending orders." }
 
   const { error } = await supabase
@@ -466,7 +475,7 @@ export async function markPendingFilled(formData: FormData): Promise<{ ok: boole
     .select("user_id, status, entry_price, size")
     .eq("id", parsed.data.trade_id)
     .single()
-  if (!trade || trade.user_id !== user.id) return { ok: false, error: "Trade not found." }
+  if (!trade) return { ok: false, error: "Trade not found." }
   if (trade.status !== "pending") return { ok: false, error: "Order is not pending." }
 
   const { error } = await supabase.from("trade_fills").insert({
@@ -506,7 +515,8 @@ export async function closeTrade(formData: FormData) {
     .eq("id", parsed.data.id)
     .single()
   if (!trade) return { ok: false, error: "Trade not found." }
-  if (trade.user_id !== user.id) return { ok: false, error: "Not your trade." }
+  // Team mode: RLS scopes this SELECT to the caller's team, so a returned row
+  // is authorized for any member. No trade.user_id === user.id self-check.
   if (trade.status !== "open") return { ok: false, error: "Trade is not open." }
 
   const { data: exits } = await supabase
